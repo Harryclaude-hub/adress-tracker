@@ -172,6 +172,9 @@ const FEHLER = {
   datei_ungueltig: 'Die Datei konnte nicht gelesen werden.',
   zu_viele_dateien: 'Mehr als 20 Dateien pro Person gehen nicht.',
   speicher_voll: 'Der Datei-Speicher ist voll (300 MB). Bitte alte Dateien löschen.',
+  datei_typ_nicht_erlaubt: 'Diesen Dateityp gibt es hier nicht. Erlaubt sind Bilder, PDF, Word, Excel, PowerPoint, ZIP, TXT und CSV.',
+  datei_inhalt_passt_nicht: 'Der Inhalt passt nicht zur Dateiendung. Die Datei wurde nicht gespeichert.',
+  zu_schnell: 'Zu viele Dateien auf einmal. Bitte eine Minute warten.',
   zu_lang: 'Ein Feld ist zu lang.',
   nicht_gefunden: 'Den Eintrag gibt es nicht mehr. Die Liste wird neu geladen.',
   setup_ungueltig: 'Der Einrichtungs-Schlüssel stimmt nicht.',
@@ -648,6 +651,8 @@ function personSheet(id) {
 /* ---------- Dateien an einer Person (Klicken oder Reinziehen) */
 const DATEI_MAX = 5 * 1024 * 1024, DATEI_ANZ = 20;
 const BILD_OK = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const DATEI_ENDUNGEN = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'pdf', 'docx', 'xlsx', 'pptx', 'zip', 'doc', 'xls', 'ppt', 'txt', 'csv'];
+const endungOk = name => DATEI_ENDUNGEN.includes((/\.([A-Za-z0-9]{1,5})$/.exec(name || '') || [])[1]?.toLowerCase());
 function groesseText(n) { return n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1).replace('.', ',') + ' MB'; }
 function lesBase64(blob) {
   return new Promise((ok, nein) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1] || ''); fr.onerror = () => nein(fr.error); fr.readAsDataURL(blob); });
@@ -700,7 +705,7 @@ function dateiBereich(personId) {
   const grid = h('div', { class: 'files' }), msg = h('p', { class: 'err' });
   const input = h('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Dateien auswählen' });
   const zone = h('div', { class: 'dz', role: 'button', tabindex: '0', 'aria-label': 'Dateien hinzufügen' },
-    h('strong', { text: 'Dateien oder Fotos hinzufügen' }), h('span', { text: 'Hier tippen oder Dateien hineinziehen. Bis 5 MB je Datei, Fotos werden verkleinert.' }));
+    h('strong', { text: 'Dateien oder Fotos hinzufügen' }), h('span', { text: 'Hier tippen oder Dateien hineinziehen. Bilder, PDF, Word, Excel, PowerPoint, ZIP, TXT, CSV. Bis 5 MB je Datei, Fotos werden verkleinert.' }));
   const el = h('div', { class: 'fg dz-box' }, zone, input, grid, msg);
 
   function zeige() {
@@ -729,6 +734,7 @@ function dateiBereich(personId) {
     msg.textContent = '';
     for (const f of files) {
       if (liste.length + wartend.length + laeuft >= DATEI_ANZ) { msg.textContent = FEHLER.zu_viele_dateien; break; }
+      if (!endungOk(f.name)) { msg.textContent = '"' + f.name + '": ' + FEHLER.datei_typ_nicht_erlaubt; continue; }
       if (f.size > DATEI_MAX && !f.type.startsWith('image/')) { msg.textContent = '"' + f.name + '": ' + FEHLER.datei_zu_gross; continue; }
       if (!personId) { wartend.push(f); zeige(); continue; }
       laeuft++; zeige();
@@ -797,6 +803,7 @@ function uebersichtSheet() {
       karte('', 'Angehakt, wartet noch', eur(summe(wartet)), wartet.length + (wartet.length === 1 ? ' Person' : ' Personen') + ', zählt ab ' + abL),
       karte('', 'Nicht dazugerechnet', String(nein.length), nein.length === 1 ? 'Person bekommt keinen Wert' : 'Personen bekommen keinen Wert')),
     h('div', { class: 'fg table-wrap' }, tb),
+    h('p', { class: 'hint', text: 'Dateispeicher: ' + (((S.einst.dateien_bytes || 0) / 1048576).toFixed(1).replace('.', ',')) + ' MB von 300 MB' + ((S.einst.dateien_bytes || 0) > 0.8 * 314572800 ? ' (fast voll, bitte alte Dateien löschen)' : '') }),
     h('p', { class: 'hint', text: 'Standardwert ' + eur(S.einst.standardwert) + ' je Person, zählt ab Stufe "' + abL + '", und nur bei Personen mit "Dazurechnen". ' + P.length + (P.length === 1 ? ' Person' : ' Personen') + ' insgesamt.' }),
     h('button', { class: 'btn', text: 'Einstellungen ändern', onclick: () => { sh.__close(); profilSheet(); } })),
   { right: h('button', { class: 'tbtn strong', text: 'Fertig', onclick: () => sh.__close() }), wide: true });
