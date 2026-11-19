@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Adress-Tracker">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3ccfff"/>
+      <stop offset="1" stop-color="#0b4fe6"/>
+    </linearGradient>
+    <mask id="m">
+      <rect width="512" height="512" fill="#fff"/>
+      <path d="M203 217l39 39 70-81" fill="none" stroke="#000" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <rect width="512" height="512" rx="115" fill="url(#g)"/>
+  <path mask="url(#m)" fill="#fff" d="M256 86c-68 0-124 54-124 123 0 82 86 142 124 224 38-82 124-142 124-224 0-69-56-123-124-123z"/>
+</svg>
