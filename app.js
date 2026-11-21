@@ -22,8 +22,8 @@ const SORTS = [['neu', 'Neueste zuerst'], ['name', 'Name A bis Z'], ['nr', 'Adre
 
 const S = {
   code: null, me: null, personen: [], sig: '', stand: null, online: true, lastN: 0,
-  einst: { standardwert: 40, zaehlt_ab: 'veraltet' }, esig: '',
-  f: { status: 'alle', q: '', state: 'alle', haken: 'alle', sort: 'neu' },
+  einst: { standardwert: 40, zaehlt_ab: 'veraltet' }, esig: '', projekte: [], ansicht: 'start',
+  f: { status: 'alle', q: '', state: 'alle', haken: 'alle', projekt: 'alle', mail: 'alle', konto: 'alle', sort: 'neu' },
 };
 
 /* ------------------------------------------------------------------ Helfer */
@@ -107,6 +107,7 @@ const ICONS = {
   list: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01',
   down: 'M12 4v11M7.5 11L12 15.5 16.5 11M5 20h14',
   sum: 'M18 5H6l6 7-6 7h12',
+  back: 'M15 5l-7 7 7 7',
 };
 function ic(name) {
   const ns = 'http://www.w3.org/2000/svg';
@@ -175,6 +176,12 @@ const FEHLER = {
   datei_typ_nicht_erlaubt: 'Diesen Dateityp gibt es hier nicht. Erlaubt sind Bilder, PDF, Word, Excel, PowerPoint, ZIP, TXT und CSV.',
   datei_inhalt_passt_nicht: 'Der Inhalt passt nicht zur Dateiendung. Die Datei wurde nicht gespeichert.',
   zu_schnell: 'Zu viele Dateien auf einmal. Bitte eine Minute warten.',
+  name_doppelt: 'Diesen Namen gibt es schon (in irgendeinem Projekt). Kein Name darf doppelt vorkommen.',
+  mail_doppelt: 'Diese E-Mail gibt es schon (in irgendeinem Projekt). Keine Mail darf doppelt vorkommen.',
+  stake_gesperrt: 'Bet Online ist bei dieser Person schon gesetzt, deshalb geht Stake nicht mehr.',
+  projekt_ungueltig: 'Dieses Projekt gibt es nicht.',
+  mail_status_ungueltig: 'Der Mail-Status ist ungültig.',
+  konto_ungueltig: 'Die Konto-Angabe ist ungültig.',
   zu_lang: 'Ein Feld ist zu lang.',
   nicht_gefunden: 'Den Eintrag gibt es nicht mehr. Die Liste wird neu geladen.',
   setup_ungueltig: 'Der Einrichtungs-Schlüssel stimmt nicht.',
@@ -267,7 +274,10 @@ async function laden(first) {
     const changed = sig !== S.sig || esig !== S.esig;
     S.personen = r.personen; S.sig = sig; S.esig = esig;
     if (r.einstellungen) S.einst = r.einstellungen;
-    if (first || !$('#rows')) aufbau(); else { setSub(); if (changed) zeichne(); }
+    if (r.projekte) S.projekte = r.projekte;
+    if (first || (S.ansicht === 'liste' && !$('#rows')) || (S.ansicht === 'start' && !$('.start'))) aufbau();
+    else if (S.ansicht === 'start') { setSub(); if (changed) startAufbau(); }
+    else { setSub(); if (changed) zeichne(); }
     if (!pollTimer) {
       pollTimer = setInterval(() => { if (!document.hidden && !pending.size && S.code) laden(false); }, POLL_MS);
       document.addEventListener('visibilitychange', () => { if (!document.hidden && S.code && !pending.size) laden(false); });
@@ -293,12 +303,17 @@ function navItem(label, count, active, onclick, dot) {
     count != null ? h('span', { class: 'nc', text: count }) : null);
 }
 function aufbau() {
+  if (S.ansicht === 'start') { startAufbau(); return; }
   const app = $('#app'); app.textContent = '';
   const side = h('aside', { class: 'side', 'aria-label': 'Filter' },
     h('div', { class: 'side-brand' }, logoImg(30), h('span', { class: 'side-title', text: 'Adress-Tracker' })),
     h('div', { class: 'side-scroll' },
+      h('button', { class: 'nav-item', onclick: zumStart }, ic('back'), h('span', { class: 'nl', text: 'Alle Projekte' })),
       h('button', { class: 'nav-item', onclick: uebersichtSheet }, ic('sum'), h('span', { class: 'nl', text: 'Übersicht und Wert' })),
+      h('div', { class: 'side-label', text: 'Land' }), h('div', { id: 'sideLand' }),
       h('div', { class: 'side-label', text: 'Stufe' }), h('div', { id: 'sideStatus' }),
+      h('div', { class: 'side-label', text: 'Mail' }), h('div', { id: 'sideMail' }),
+      h('div', { class: 'side-label', text: 'Konto' }), h('div', { id: 'sideKonto' }),
       h('div', { class: 'side-label', text: 'Dazurechnen' }), h('div', { id: 'sideHaken' }),
       h('div', { class: 'side-label', text: 'State' }), h('div', { id: 'sideStates' })),
     h('button', { class: 'side-me', onclick: profilSheet, 'aria-label': 'Profil öffnen' }, avatar(S.me.name),
@@ -311,7 +326,8 @@ function aufbau() {
   sortSel.value = S.f.sort;
   const topbar = h('header', { class: 'topbar' },
     h('div', { class: 'tb-row' },
-      h('div', { class: 'tb-title' }, h('h1', { id: 'title', text: 'Personen' }), h('div', { class: 'sub', id: 'sub' })),
+      h('button', { class: 'ibtn back', 'aria-label': 'Zu den Projekten', onclick: zumStart }, ic('back')),
+      h('div', { class: 'tb-title' }, h('h1', null, h('span', { id: 'tflag', class: 'tflag' }), h('span', { id: 'title', text: 'Personen' })), h('div', { class: 'sub', id: 'sub' })),
       h('button', { class: 'btn pri only-desk', 'aria-label': 'Person hinzufügen', onclick: () => personSheet(null) }, ic('plus'), h('span', { class: 'lbl', text: 'Person' })),
       h('button', { class: 'ibtn', 'aria-label': 'Mehr', onclick: ev => hauptmenue(ev.currentTarget) }, ic('more'))),
     h('div', { class: 'tb-row' }, search, sortSel,
@@ -334,6 +350,8 @@ function hauptmenue(anchor) {
 /* ------------------------------------------------------------------ Filter, Sortierung, Liste */
 function passtOhneStatus(p) {
   const f = S.f;
+  if (f.projekt !== 'alle' && p.projekt_id !== f.projekt) return false;
+  if (!mailPasst(p, f.mail) || !kontoPasst(p, f.konto)) return false;
   if (f.haken === 'offen' && p.zaehlt) return false;
   if (f.haken === 'ja' && !p.zaehlt) return false;
   if (f.state === 'ohne' && p.state) return false;
@@ -361,9 +379,9 @@ function sortiere(arr) {
 }
 function setSub() {
   const el = $('#sub'); if (!el) return;
-  const n = S.lastN, total = S.personen.length;
+  const n = S.lastN, total = S.ansicht === 'start' ? S.personen.length : S.personen.filter(imProjekt).length;
   el.textContent = '';
-  el.append(h('span', { text: n === total ? total + (total === 1 ? ' Person' : ' Personen') : n + ' von ' + total }),
+  el.append(h('span', { text: S.ansicht === 'start' || n === total ? total + (total === 1 ? ' Person' : ' Personen') : n + ' von ' + total }),
     h('span', { class: 'dot' + (S.online ? '' : ' off'), 'aria-hidden': 'true' }),
     h('span', { text: S.online ? 'Live, Stand ' + new Date(S.stand).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : 'Keine Verbindung' }));
 }
@@ -373,13 +391,23 @@ function zeichne() {
   base.forEach(p => { if (p.status in cnt) cnt[p.status]++; });
   const rows = sortiere(base.filter(p => S.f.status === 'alle' || p.status === S.f.status));
   S.lastN = rows.length;
-  $('#title').textContent = S.f.status === 'alle' ? 'Personen' : STATUS_L[S.f.status];
+  if (S.f.projekt !== 'alle' && !S.projekte.some(x => x.id === S.f.projekt)) S.f.projekt = 'alle';
+  const pr = S.f.projekt === 'alle' ? null : projektVon(S.f.projekt), inP = S.personen.filter(imProjekt);
+  $('#title').textContent = (pr ? pr.name : 'Alle Personen') + (S.f.status === 'alle' ? '' : ' · ' + STATUS_L[S.f.status]);
+  const tf = $('#tflag'); tf.textContent = ''; if (pr) tf.append(flagge(pr.flagge, 'mini'));
   setSub();
 
   // Seitenleiste
   const ss = $('#sideStatus'); ss.textContent = '';
   ss.append(navItem('Alle', cnt.alle, S.f.status === 'alle', () => { S.f.status = 'alle'; zeichne(); }, ''));
   STATUS.forEach(s => ss.append(navItem(s.l, cnt[s.k], S.f.status === s.k, () => { S.f.status = s.k; zeichne(); }, s.k)));
+  const sl = $('#sideLand'); sl.textContent = '';
+  sl.append(navItem('Alle Länder', S.personen.length, S.f.projekt === 'alle', () => { S.f.projekt = 'alle'; zeichne(); }));
+  S.projekte.forEach(x => { const b = navItem(x.name, S.personen.filter(p => p.projekt_id === x.id).length, S.f.projekt === x.id, () => { S.f.projekt = x.id; zeichne(); }); b.prepend(flagge(x.flagge, 'mini')); sl.append(b); });
+  const sm = $('#sideMail'); sm.textContent = '';
+  MAIL_FILTER.forEach(([k, l]) => sm.append(navItem(l, inP.filter(p => mailPasst(p, k)).length, S.f.mail === k, () => { S.f.mail = k; zeichne(); })));
+  const sk = $('#sideKonto'); sk.textContent = '';
+  KONTO_FILTER.forEach(([k, l]) => sk.append(navItem(l, inP.filter(p => kontoPasst(p, k)).length, S.f.konto === k, () => { S.f.konto = k; zeichne(); })));
   const sh = $('#sideHaken'); sh.textContent = '';
   [['alle', 'Alle'], ['offen', 'Nicht dazugerechnet'], ['ja', 'Dazugerechnet']].forEach(([k, l]) => sh.append(navItem(l, null, S.f.haken === k, () => { S.f.haken = k; zeichne(); })));
   const counts = {}; let ohne = 0;
@@ -394,25 +422,30 @@ function zeichne() {
   // Kapseln (Handy)
   const chips = $('#chips'); chips.textContent = '';
   [{ k: 'alle', l: 'Alle' }, ...STATUS].forEach(s => chips.append(h('button', { class: 'chip', 'data-s': s.k, 'aria-pressed': String(S.f.status === s.k), onclick: () => { S.f.status = s.k; zeichne(); } }, s.k === 'alle' ? null : h('span', { class: 'sw-dot ' + s.k }), s.l, h('span', { class: 'n', text: cnt[s.k] }))));
-  const b = (S.f.state !== 'alle') + (S.f.haken !== 'alle');
+  const b = (S.f.state !== 'alle') + (S.f.haken !== 'alle') + (S.f.mail !== 'alle') + (S.f.konto !== 'alle');
   const badge = $('#fbadge'); if (badge) { badge.hidden = !b; badge.textContent = b; }
 
   // Zeilen
   const box = $('#rows'); box.textContent = '';
-  if (!S.personen.length) {
-    box.append(h('div', { class: 'group' }, h('div', { class: 'empty' }, h('h2', { text: 'Noch keine Personen' }),
+  if (!inP.length) {
+    box.append(h('div', { class: 'group' }, h('div', { class: 'empty' }, h('h2', { text: S.personen.length ? 'In diesem Projekt sind noch keine Personen' : 'Noch keine Personen' }),
       h('p', { text: 'Lege die erste Person an. Es reicht ein einziges Feld, zum Beispiel nur die E-Mail oder nur die Nummer. Den Rest trägst du später nach.' }),
       h('button', { class: 'btn pri', onclick: () => personSheet(null) }, ic('plus'), 'Person hinzufügen'))));
     return;
   }
   if (!rows.length) {
     box.append(h('div', { class: 'group' }, h('div', { class: 'empty' }, h('h2', { text: 'Nichts gefunden' }), h('p', { text: 'Kein Eintrag passt zu den gewählten Filtern.' }),
-      h('button', { class: 'btn', text: 'Filter zurücksetzen', onclick: () => { S.f = { status: 'alle', q: '', state: 'alle', haken: 'alle', sort: S.f.sort }; $('#q').value = ''; zeichne(); } }))));
+      h('button', { class: 'btn', text: 'Filter zurücksetzen', onclick: () => { S.f = { status: 'alle', q: '', state: 'alle', haken: 'alle', projekt: S.f.projekt, mail: 'alle', konto: 'alle', sort: S.f.sort }; $('#q').value = ''; zeichne(); } }))));
     return;
   }
   const grp = h('div', { class: 'group' }, h('div', { class: 'colhead' }, h('span'), h('span', { text: 'Person' }), h('span', { text: 'State' }), h('span', { text: 'Stufe' }), h('span', { text: 'Zuletzt' })));
   rows.forEach(p => grp.append(zeile(p)));
-  box.append(grp, h('div', { class: 'foot', text: rows.length + ' von ' + S.personen.length + ' angezeigt, ' + S.personen.filter(p => p.zaehlt).length + ' dazugerechnet' }));
+  box.append(grp, h('div', { class: 'foot', text: rows.length + ' von ' + inP.length + ' angezeigt, ' + inP.filter(p => p.zaehlt).length + ' dazugerechnet' }));
+}
+function aehnTag(p) {
+  const am = aehnlichkeiten().get(p.id); if (!am || !am.length) return null;
+  const ex = am.some(x => x.art === 'exakt');
+  return h('span', { class: 'tag ' + (ex ? 'rot' : 'blue'), title: (ex ? 'Gleicher Name wie: ' : 'Ähnlich wie: ') + am.map(x => titel(x.p) + ' (' + projektTitel(x.p.projekt_id) + ')').join(', '), text: ex ? 'Doppelt' : 'Ähnlich' });
 }
 function zeile(p) {
   const tv = titelVon(p);
@@ -422,12 +455,13 @@ function zeile(p) {
   const sub = h('div', { class: 'subline' },
     tv.k === 'nummer' ? null : p.nummer ? h('span', { class: 'ph', text: p.nummer }) : h('span', { class: 'none', text: 'Nummer fehlt' }),
     tv.k === 'email' ? null : p.email ? h('span', { text: p.email }) : h('span', { class: 'none', text: 'E-Mail fehlt' }),
+    p.mail_status ? h('span', { class: 'ms-pill ' + p.mail_status, text: p.mail_status === 'erhalten' ? 'Mail erhalten' : 'Mail erstellt' }) : null,
     p.adresse && tv.k !== 'adresse' ? h('span', { text: p.adresse }) : null,
     p.zustaendig ? h('span', { text: 'Zuständig: ' + p.zustaendig }) : null);
   const subm = h('div', { class: 'sub-m', text: [p.state ? p.state + (STATES[p.state] ? ' · ' + STATES[p.state] : '') : 'Ohne State'].join(' · ') });
   return h('div', { class: 'row', 'data-id': p.id },
     h('label', { class: 'cb' }, h('input', { class: 'cbx', type: 'checkbox', checked: !!p.zaehlt, 'aria-label': 'Dazurechnen: ' + tv.t, title: 'Dazurechnen', onchange: e => quick(p.id, { zaehlt: e.target.checked }) })),
-    h('div', { class: 'c-main' }, h('div', { class: 'nmline' }, h('button', { class: 'nm', text: tv.t, onclick: () => personSheet(p.id) }), p.adressnummer ? h('span', { class: 'nr', title: 'Adressnummer', text: 'Nr. ' + p.adressnummer }) : null, p.dateien ? h('span', { class: 'nr', title: 'Dateien', text: p.dateien + (p.dateien === 1 ? ' Datei' : ' Dateien') }) : null), sub, subm),
+    h('div', { class: 'c-main' }, h('div', { class: 'nmline' }, S.f.projekt === 'alle' ? flagge(projektVon(p.projekt_id).flagge, 'mini') : null, h('button', { class: 'nm', text: tv.t, onclick: () => personSheet(p.id) }), p.adressnummer ? h('span', { class: 'nr', title: 'Adressnummer', text: 'Nr. ' + p.adressnummer }) : null, p.dateien ? h('span', { class: 'nr', title: 'Dateien', text: p.dateien + (p.dateien === 1 ? ' Datei' : ' Dateien') }) : null, p.betonline ? h('span', { class: 'kt bo', text: 'Bet Online' }) : null, p.stake ? h('span', { class: 'kt st', text: 'Stake' }) : null, aehnTag(p)), sub, subm),
     p.state ? h('div', { class: 'c-state', title: STATES[p.state] || p.state, text: p.state }) : h('div', { class: 'c-state leer', text: 'ohne' }),
     h('div', { class: 'c-status' }, stsel),
     h('div', { class: 'c-last' }, rel(p.geaendert), h('br'), p.geaendert_von ? 'von ' + p.geaendert_von : ''));
@@ -511,11 +545,17 @@ function filterSheet() {
   const selH = h('select', { id: 'f-haken', 'aria-label': 'Haken', onchange: e => { S.f.haken = e.target.value; zeichne(); } },
     h('option', { value: 'alle', text: 'Alle' }), h('option', { value: 'offen', text: 'Nicht dazugerechnet' }), h('option', { value: 'ja', text: 'Dazugerechnet' }));
   selH.value = S.f.haken;
+  const selL = h('select', { id: 'f-land', 'aria-label': 'Land', onchange: e => { S.f.projekt = e.target.value; zeichne(); } }, h('option', { value: 'alle', text: 'Alle Länder' }), ...S.projekte.map(x => h('option', { value: x.id, text: x.name })));
+  selL.value = S.f.projekt;
+  const selM = h('select', { id: 'f-mail', 'aria-label': 'Mail', onchange: e => { S.f.mail = e.target.value; zeichne(); } }, ...MAIL_FILTER.map(([k, l]) => h('option', { value: k, text: l })));
+  selM.value = S.f.mail;
+  const selK = h('select', { id: 'f-konto', 'aria-label': 'Konto', onchange: e => { S.f.konto = e.target.value; zeichne(); } }, ...KONTO_FILTER.map(([k, l]) => h('option', { value: k, text: l })));
+  selK.value = S.f.konto;
   const selO = h('select', { id: 'f-sort', 'aria-label': 'Sortierung', onchange: e => { S.f.sort = e.target.value; zeichne(); } }, ...SORTS.map(([v, t]) => h('option', { value: v, text: t })));
   selO.value = S.f.sort;
   const sh = sheetEl('Filter', h('div', { class: 'sheet-b' },
-    h('div', { class: 'fg' }, h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'State' }), selS), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Dazurechnen' }), selH), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Sortierung' }), selO)),
-    h('button', { class: 'btn', text: 'Zurücksetzen', onclick: () => { S.f = { status: 'alle', q: S.f.q, state: 'alle', haken: 'alle', sort: 'neu' }; zeichne(); sh.__close(); } })),
+    h('div', { class: 'fg' }, h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Land' }), selL), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Mail' }), selM), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Konto' }), selK), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'State' }), selS), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Dazurechnen' }), selH), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Sortierung' }), selO)),
+    h('button', { class: 'btn', text: 'Zurücksetzen', onclick: () => { S.f = { status: 'alle', q: S.f.q, state: 'alle', haken: 'alle', projekt: S.f.projekt, mail: 'alle', konto: 'alle', sort: 'neu' }; zeichne(); sh.__close(); } })),
     { left: h('button', { class: 'tbtn', text: 'Schließen', onclick: () => sh.__close() }), right: h('button', { class: 'tbtn strong', text: 'Fertig', onclick: () => sh.__close() }) });
   oeffne(sh, true);
 }
@@ -526,7 +566,7 @@ function frow(label, control, extra, tall) {
 }
 function personSheet(id) {
   const neu = id == null;
-  const p = neu ? { name: '', adressnummer: '', state: null, nummer: '', email: '', adresse: '', status: 'leer', zaehlt: false, wert: null, zustaendig: '', notiz: '' } : S.personen.find(x => x.id === id);
+  const p = neu ? { name: '', adressnummer: '', state: null, nummer: '', email: '', adresse: '', status: 'leer', zaehlt: false, wert: null, projekt_id: S.f.projekt !== 'alle' ? S.f.projekt : 'usa', mail_status: null, betonline: false, stake: false, zustaendig: '', notiz: '' } : S.personen.find(x => x.id === id);
   if (!p) return;
   const name = h('input', { id: 'd-name', value: p.name, maxlength: 200, autocomplete: 'off', autocapitalize: 'words', placeholder: 'optional, Vor- und Nachname' });
   const anr = h('input', { id: 'd-anr', value: p.adressnummer || '', maxlength: 40, autocomplete: 'off', autocapitalize: 'off', placeholder: 'eigene Nummer, optional' });
@@ -538,6 +578,21 @@ function personSheet(id) {
   const haken = h('input', { id: 'd-haken', class: 'sw', type: 'checkbox', role: 'switch', checked: !!p.zaehlt });
   const nummer = h('input', { id: 'd-nummer', value: p.nummer || '', inputmode: 'tel', autocomplete: 'off', maxlength: 60, placeholder: 'noch offen' });
   const email = h('input', { id: 'd-email', value: p.email || '', inputmode: 'email', autocomplete: 'off', autocapitalize: 'off', maxlength: 254, placeholder: 'noch offen' });
+  const projSel = h('select', { id: 'd-projekt', 'aria-label': 'Projekt' }, ...S.projekte.map(x => h('option', { value: x.id, text: x.name }))); projSel.value = p.projekt_id;
+  const mailSel = h('select', { id: 'd-mailstatus', class: 'msel', 'aria-label': 'Mail-Status' }, h('option', { value: '', text: 'Mail-Status' }), h('option', { value: 'erhalten', text: 'Erhalten' }), h('option', { value: 'erstellt', text: 'Erstellt' })); mailSel.value = p.mail_status || '';
+  const syncMail = () => { mailSel.disabled = !email.value.trim(); if (mailSel.disabled) mailSel.value = ''; }; syncMail(); email.addEventListener('input', syncMail);
+  /* Konten: Bet Online zuerst sperrt Stake. Stake zuerst erlaubt Bet Online danach. */
+  const origBet = !!p.betonline, origStake = !!p.stake; let bet = origBet, stk = origStake;
+  const betBtn = h('button', { class: 'kbtn bo', type: 'button', text: 'Bet Online' }), stakeBtn = h('button', { class: 'kbtn st', type: 'button', text: 'Stake' });
+  const kHint = h('p', { class: 'hint', text: '' });
+  const kontenZeigen = () => {
+    betBtn.setAttribute('aria-pressed', String(bet)); stakeBtn.setAttribute('aria-pressed', String(stk));
+    stakeBtn.disabled = !stk && (bet || (origBet && !origStake));
+    kHint.textContent = stakeBtn.disabled ? 'Bet Online ist gesetzt, deshalb geht Stake bei dieser Person nicht mehr.' : 'Zuerst Stake, danach Bet Online geht. Zuerst Bet Online, danach Stake geht nicht.';
+  };
+  betBtn.addEventListener('click', () => { bet = !bet; kontenZeigen(); });
+  stakeBtn.addEventListener('click', () => { if (stakeBtn.disabled) return; stk = !stk; kontenZeigen(); });
+  kontenZeigen();
   const wert = h('input', { id: 'd-wert', value: p.wert == null ? '' : String(p.wert).replace('.', ','), inputmode: 'decimal', autocomplete: 'off', maxlength: 10, placeholder: 'Standard ' + eur(S.einst.standardwert) });
   const adresse = h('textarea', { id: 'd-adresse', maxlength: 500, placeholder: 'Zugeteilte Adresse', rows: 2 }); adresse.value = p.adresse || '';
   const zust = h('input', { id: 'd-zust', value: p.zustaendig || '', autocomplete: 'off', maxlength: 100, placeholder: 'optional' });
@@ -561,34 +616,36 @@ function personSheet(id) {
       if (em && x.email && x.email.toLowerCase() === em) gruende.push('Gleiche E-Mail');
       if (ph.length >= 7 && x.nummer && x.nummer.replace(/\D/g, '') === ph) gruende.push('Gleiche Nummer');
       if (an && x.adressnummer && x.adressnummer.trim().toLowerCase() === an) gruende.push('Gleiche Adressnummer');
-      if (gruende.length) out.push({ p: x, gruende, exakt: a === 'exakt' });
+      if (gruende.length) out.push({ p: x, gruende, exakt: a === 'exakt', hart: gruende.includes('Name gleich') || gruende.includes('Gleiche E-Mail') });
     }
-    out.sort((a, b) => (b.exakt - a.exakt) || (b.gruende.length - a.gruende.length));
+    out.sort((a, b) => (b.hart - a.hart) || (b.exakt - a.exakt) || (b.gruende.length - a.gruende.length));
     return out.slice(0, 3);
   }
-  function zeigeWarnung(list) {
+  function zeigeWarnung(list, hart) {
     warnBox.textContent = ''; warnBox.hidden = !list.length; if (!list.length) return;
+    warnBox.className = 'warn ' + (hart ? 'hart' : 'info');
     const mine = { name: name.value.trim(), adressnummer: anr.value.trim(), state: st.value, nummer: nummer.value.trim(), email: email.value.trim(), adresse: adresse.value.trim(), status: status.value };
-    warnBox.append(h('h3', { text: list.some(t => t.exakt) ? 'Diese Person gibt es schon' : 'Diese Person gibt es vielleicht schon' }),
-      h('p', { text: 'Bitte vergleiche beide. Wenn du trotzdem sicherst, steht die Person doppelt in der Liste.' }));
+    warnBox.append(h('h3', { text: hart ? 'Das gibt es schon, Sichern geht nicht' : 'Diese Person gibt es vielleicht schon' }),
+      h('p', { text: hart ? 'Kein Name und keine E-Mail darf doppelt vorkommen, in keinem Projekt. Öffne die vorhandene Person oder ändere deinen Eintrag.' : 'Der Name ist sehr ähnlich. Bitte vergleiche beide. Wenn du trotzdem sicherst, gibt es zwei ähnliche Einträge.' }));
     list.forEach(t => {
       const x = t.p;
       const val = (k, a, b) => { const same = a && b && norm(a) === norm(b); return [h('div', { class: 'v' + (same ? ' same' : (a || b ? ' diff' : '')), text: a || '–' }), h('div', { class: 'v' + (same ? ' same' : (a || b ? ' diff' : '')), text: b || '–' })]; };
-      const rows = [['Name', mine.name, x.name], ['Adressnr.', mine.adressnummer, x.adressnummer || ''], ['State', mine.state, x.state || ''], ['Nummer', mine.nummer, x.nummer || ''], ['E-Mail', mine.email, x.email || ''], ['Adresse', mine.adresse, x.adresse || ''], ['Stufe', STATUS_L[mine.status], STATUS_L[x.status]]];
+      const rows = [['Projekt', projektTitel(projSel.value), projektTitel(x.projekt_id)], ['Name', mine.name, x.name], ['Adressnr.', mine.adressnummer, x.adressnummer || ''], ['State', mine.state, x.state || ''], ['Nummer', mine.nummer, x.nummer || ''], ['E-Mail', mine.email, x.email || ''], ['Adresse', mine.adresse, x.adresse || ''], ['Stufe', STATUS_L[mine.status], STATUS_L[x.status]]];
       const grid = h('div', { class: 'cmp' }, h('div', { class: 'h' }), h('div', { class: 'h', text: 'Dein Eintrag' }), h('div', { class: 'h', text: 'Schon in der Liste' }));
       rows.forEach(([k, a, b]) => grid.append(h('div', { class: 'k', text: k }), ...val(k, a, b)));
       warnBox.append(h('div', { class: 'cmp-card' },
-        h('div', { class: 'cmp-top' }, ...t.gruende.map(g => h('span', { class: 'tag', text: g }))),
+        h('div', { class: 'cmp-top' }, flagge(projektVon(x.projekt_id).flagge, 'mini'), h('strong', { text: projektTitel(x.projekt_id) }), ...t.gruende.map(g => h('span', { class: 'tag ' + (g === 'Name gleich' || g === 'Gleiche E-Mail' ? 'rot' : 'blue'), text: g }))),
         grid,
         h('div', { class: 'meta', text: 'Angelegt von ' + (x.erstellt_von || 'unbekannt') + ', ' + rel(x.erstellt) }),
         h('div', { class: 'warn-actions' }, h('button', { class: 'btn sm', type: 'button', text: 'Vorhandene öffnen', onclick: () => { sh.__close(); personSheet(x.id); } }))));
     });
     warnBox.append(h('div', { class: 'warn-actions' }, h('button', { class: 'btn', type: 'button', text: 'Zurück zum Bearbeiten', onclick: () => { name.focus(); } })));
+    if (hart) setLabel('Sichern', false);
   }
   function pruefeLive() {
     const list = treffer();
     if (bestaetigt) { bestaetigt = false; setLabel('Sichern', false); warnBox.hidden = true; }
-    if (list.length) { soft.hidden = false; soft.textContent = 'Ähnlich in der Liste: ' + list.map(t => titel(t.p) + (t.p.state ? ' (' + t.p.state + ')' : '')).join(', '); }
+    if (list.length) { soft.hidden = false; const hart = list.some(t => t.hart); soft.className = 'softwarn' + (hart ? ' hart' : ''); soft.textContent = (hart ? 'Schon vorhanden (Sichern geht nicht): ' : 'Ähnlich in der Liste: ') + list.map(t => titel(t.p) + ' (' + projektTitel(t.p.projekt_id) + ')').join(', '); }
     else soft.hidden = true;
   }
   let tmr = null; const live = () => { clearTimeout(tmr); tmr = setTimeout(pruefeLive, 250); };
@@ -604,15 +661,16 @@ function personSheet(id) {
     const wz = wert.value.trim() === '' ? null : parseEuro(wert.value);
     if (Number.isNaN(wz)) { err.textContent = 'Bitte beim Wert eine Zahl eintragen, zum Beispiel 40 oder 35,50.'; wert.focus(); return; }
     const list = treffer();
+    if (list.some(t => t.hart)) { zeigeWarnung(list, true); bestaetigt = false; warnBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
     if (list.length && !bestaetigt) {
-      zeigeWarnung(list); bestaetigt = true; setLabel('Trotzdem sichern', true);
+      zeigeWarnung(list, false); bestaetigt = true; setLabel('Trotzdem sichern', true);
       warnBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return;
     }
-    const neuF = { name: nm, adressnummer: anr.value.trim(), state: st.value || null, nummer: nummer.value.trim(), email: email.value.trim(), adresse: adresse.value.trim(), status: status.value, zaehlt: haken.checked, wert: wz, zustaendig: zust.value.trim(), notiz: notiz.value.trim() };
+    const neuF = { name: nm, adressnummer: anr.value.trim(), state: st.value || null, nummer: nummer.value.trim(), email: email.value.trim(), adresse: adresse.value.trim(), status: status.value, zaehlt: haken.checked, wert: wz, projekt: projSel.value, mail_status: mailSel.value || null, betonline: bet, stake: stk, zustaendig: zust.value.trim(), notiz: notiz.value.trim() };
     let felder = {};
-    if (neu) { for (const [k, v] of Object.entries(neuF)) if (v !== '' && v !== null && !(k === 'zaehlt' && v === false) && !(k === 'status' && v === 'leer')) felder[k] = v; }
+    if (neu) { for (const [k, v] of Object.entries(neuF)) if (v !== '' && v !== null && !(['zaehlt', 'betonline', 'stake'].includes(k) && v === false) && !(k === 'status' && v === 'leer')) felder[k] = v; }
     else {
-      for (const [k, v] of Object.entries(neuF)) { const o = p[k] == null ? (k === 'zaehlt' ? false : '') : p[k]; const n = v == null ? '' : v; if (o !== n) felder[k] = v; }
+      for (const [k, v] of Object.entries(neuF)) { const o0 = p[k === 'projekt' ? 'projekt_id' : k]; const o = o0 == null ? (['zaehlt', 'betonline', 'stake'].includes(k) ? false : '') : o0; const n = v == null ? '' : v; if (o !== n) felder[k] = v; }
       if (!Object.keys(felder).length) { sh.__close(); return; }
     }
     sichern.disabled = true; fuss.disabled = true;
@@ -623,7 +681,7 @@ function personSheet(id) {
         const u = await bereich.hochladen(r.id); await laden(false);
         toast(u.fehler ? u.ok + ' Dateien gespeichert, ' + u.fehler + ' nicht: ' + u.grund : u.ok + (u.ok === 1 ? ' Datei hochgeladen' : ' Dateien hochgeladen'), !!u.fehler);
       }
-    } catch (e) { err.textContent = fehlertext(e); sichern.disabled = false; fuss.disabled = false; if (e.message === 'nicht_gefunden') laden(false); }
+    } catch (e) { err.textContent = fehlertext(e); sichern.disabled = false; fuss.disabled = false; if (['nicht_gefunden', 'name_doppelt', 'mail_doppelt', 'stake_gesperrt'].includes(e.message)) laden(false); }
   });
 
   let armed = false;
@@ -636,9 +694,10 @@ function personSheet(id) {
 
   const body = h('div', { class: 'sheet-b' },
     warnBox,
-    h('div', { class: 'fg' }, frow('Name', name), soft, frow('Adressnr.', anr), frow('State', st)),
+    h('div', { class: 'fg' }, frow('Projekt', projSel), frow('Name', name), soft, frow('Adressnr.', anr), frow('State', st)),
     h('div', { class: 'fg' }, frow('Stufe', status), frow('Wert (€)', wert), h('label', { class: 'fr sw-row' }, h('span', { class: 'fl', text: 'Dazurechnen' }), haken)),
-    h('div', { class: 'fg' }, frow('Nummer', nummer, cp(() => nummer.value)), frow('E-Mail', email, cp(() => email.value)), frow('Adresse', adresse, cp(() => adresse.value), true)),
+    h('div', { class: 'fg' }, frow('Nummer', nummer, cp(() => nummer.value)), frow('E-Mail', email, h('span', { class: 'xtra' }, mailSel, cp(() => email.value))), frow('Adresse', adresse, cp(() => adresse.value), true)),
+    h('div', null, h('div', { class: 'fg' }, h('div', { class: 'fr konto' }, h('span', { class: 'fl', text: 'Konten' }), h('div', { class: 'kbtns' }, betBtn, stakeBtn))), kHint),
     h('div', { class: 'fg' }, frow('Zuständig', zust), frow('Notiz', notiz, null, true)),
     h('div', null, h('div', { class: 'fg-t', text: 'Dateien und Fotos' }), bereich.el),
     !neu && p.geaendert_von ? h('p', { class: 'meta', text: 'Zuletzt geändert von ' + p.geaendert_von + ', ' + rel(p.geaendert) + '. Angelegt von ' + (p.erstellt_von || 'unbekannt') + '.' }) : null,
@@ -646,6 +705,82 @@ function personSheet(id) {
   const sh = sheetEl(neu ? 'Neue Person' : 'Person', body, { left: h('button', { class: 'tbtn', type: 'button', text: 'Abbrechen', onclick: () => sh.__close() }), right: sichern, foot: fuss });
   oeffne(sh, false);
   (neu ? name : status).focus();
+}
+
+/* ---------- Flaggen (als Zeichnung, weil Windows keine Flaggen-Emojis zeigt) */
+function svgEl(tag, a) { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [k, v] of Object.entries(a || {})) e.setAttribute(k, v); return e; }
+function flagge(code, groesse) {
+  const W = { us: 38, bd: 30, fi: 36 }[code] || 30, H = { us: 26, bd: 18, fi: 22 }[code] || 20;
+  const s = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'flag ' + (groesse || ''), 'aria-hidden': 'true' });
+  const r = (x, y, w, hh, f) => s.append(svgEl('rect', { x, y, width: w, height: hh, fill: f }));
+  if (code === 'us') {
+    r(0, 0, 38, 26, '#fff'); for (let i = 0; i < 13; i += 2) r(0, i * 2, 38, 2, '#b22234');
+    r(0, 0, 16, 14, '#3c3b6e');
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) s.append(svgEl('circle', { cx: 2.4 + i * 3.8, cy: 2.6 + j * 4.2, r: 0.85, fill: '#fff' }));
+  } else if (code === 'bd') {
+    r(0, 0, 30, 18, '#006a4e'); s.append(svgEl('circle', { cx: 13.5, cy: 9, r: 5.4, fill: '#f42a41' }));
+  } else if (code === 'fi') {
+    r(0, 0, 36, 22, '#fff'); r(9, 0, 5, 22, '#003580'); r(0, 8.5, 36, 5, '#003580');
+  } else { r(0, 0, W, H, '#8e8e93'); }
+  return s;
+}
+const projektVon = id => S.projekte.find(x => x.id === id) || { id, name: String(id || '?'), flagge: '' };
+const projektTitel = id => projektVon(id).name;
+const imProjekt = p => S.f.projekt === 'alle' || p.projekt_id === S.f.projekt;
+const KONTO_FILTER = [['alle', 'Alle'], ['stake', 'Nur Stake'], ['betonline', 'Nur Bet Online'], ['beides', 'Beides'], ['keins', 'Kein Konto']];
+const MAIL_FILTER = [['alle', 'Alle'], ['erhalten', 'Erhalten'], ['erstellt', 'Erstellt'], ['ohne', 'Ohne Status']];
+function kontoPasst(p, k) { const b = !!p.betonline, s = !!p.stake; return k === 'alle' || (k === 'stake' && s && !b) || (k === 'betonline' && b && !s) || (k === 'beides' && b && s) || (k === 'keins' && !b && !s); }
+function mailPasst(p, k) { return k === 'alle' || (k === 'ohne' ? !p.mail_status : p.mail_status === k); }
+
+/* Aehnliche Namen ueber ALLE Projekte (wird nur neu gerechnet, wenn sich die Liste aendert). */
+function aehnlichkeiten() {
+  if (S._asig === S.sig && S._amap) return S._amap;
+  const m = new Map(), P = S.personen.filter(p => p.name && p.name.trim());
+  const dazu = (a, b, art) => { if (!m.has(a.id)) m.set(a.id, []); m.get(a.id).push({ p: b, art }); };
+  for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
+    const art = aehnlich(P[i].name, P[j].name); if (!art) continue;
+    dazu(P[i], P[j], art); dazu(P[j], P[i], art);
+  }
+  S._asig = S.sig; S._amap = m; return m;
+}
+
+/* ---------- Startbildschirm: die Projekte */
+function oeffneProjekt(id) {
+  S.f = { ...S.f, projekt: id, status: 'alle', q: '', state: 'alle', haken: 'alle', mail: 'alle', konto: 'alle' };
+  S.ansicht = 'liste'; aufbau();
+}
+function zumStart() { schliesseAlle(); S.ansicht = 'start'; aufbau(); }
+function startAufbau() {
+  const app = $('#app'); app.textContent = '';
+  const P = S.personen;
+  const karte = pr => {
+    const a = P.filter(p => p.projekt_id === pr.id), an = a.filter(zaehltJetzt);
+    const er = a.filter(p => p.mail_status === 'erhalten').length, es = a.filter(p => p.mail_status === 'erstellt').length;
+    return h('button', { class: 'pcard', type: 'button', onclick: () => oeffneProjekt(pr.id), 'aria-label': pr.name + ': ' + a.length + (a.length === 1 ? ' Person' : ' Personen') },
+      flagge(pr.flagge, 'big'),
+      h('div', { class: 'pc-t' }, h('strong', { text: pr.name }), h('span', { class: 'pc-s', text: a.length + (a.length === 1 ? ' Person' : ' Personen') })),
+      h('div', { class: 'pc-m' }, h('b', { text: eur(summe(an)) }), h('small', { text: 'angekommen' })),
+      h('div', { class: 'pc-k', text: es + (es === 1 ? ' Mail' : ' Mails') + ' erstellt, ' + er + ' erhalten' }));
+  };
+  const alle = h('button', { class: 'pcard alle', type: 'button', onclick: () => oeffneProjekt('alle'), 'aria-label': 'Alle Personen: ' + P.length },
+    h('span', { class: 'flag-ersatz' }, ic('people')),
+    h('div', { class: 'pc-t' }, h('strong', { text: 'Alle Personen' }), h('span', { class: 'pc-s', text: P.length + (P.length === 1 ? ' Person' : ' Personen') + ' in allen Projekten' })),
+    h('div', { class: 'pc-m' }, h('b', { text: eur(summe(P.filter(zaehltJetzt))) }), h('small', { text: 'angekommen' })),
+    h('div', { class: 'pc-k', text: 'Kein Name und keine Mail kommt doppelt vor' }));
+  const doppelt = [...aehnlichkeiten().values()].filter(l => l.some(x => x.art === 'exakt')).length;
+  const aehn = [...aehnlichkeiten().values()].filter(l => !l.some(x => x.art === 'exakt')).length;
+  app.append(
+    h('header', { class: 'start-top' },
+      h('div', { class: 'start-brand' }, logoImg(36), h('div', null, h('h1', { text: 'Adress-Tracker' }), h('div', { class: 'sub', id: 'sub' }))),
+      h('div', { class: 'start-actions' },
+        h('button', { class: 'btn', type: 'button', onclick: uebersichtSheet }, ic('sum'), h('span', { class: 'lbl', text: 'Übersicht' })),
+        h('button', { class: 'ibtn', 'aria-label': 'Mehr', onclick: ev => hauptmenue(ev.currentTarget) }, ic('more')),
+        h('button', { class: 'side-me compact', onclick: profilSheet, 'aria-label': 'Profil öffnen' }, avatar(S.me.name)))),
+    h('main', { class: 'start' },
+      h('h2', { class: 'start-h', text: 'Projekte' }),
+      h('div', { class: 'pgrid' }, ...S.projekte.map(karte), alle),
+      (doppelt || aehn) ? h('p', { class: 'start-sum' }, doppelt ? doppelt + ' Personen haben einen doppelten Namen. ' : '', aehn ? aehn + ' Personen haben einen sehr ähnlichen Namen (blau markiert in der Liste).' : '') : null));
+  setSub();
 }
 
 /* ---------- Dateien an einer Person (Klicken oder Reinziehen) */
@@ -797,12 +932,20 @@ function uebersichtSheet() {
     body.append(h('tr', null, h('td', null, h('span', { class: 'sw-dot ' + s.k }), ' ' + s.l), h('td', { text: a.length }), h('td', { text: z.length }), h('td', { text: an.length ? eur(summe(an)) + ' (' + an.length + ')' : '–' })));
   });
   tb.append(body);
+  const tp = h('table', { class: 'pv' }, h('thead', null, h('tr', null, ...['Projekt', 'Personen', 'Dazu', 'Angekommen'].map(t => h('th', { text: t })))));
+  const bp = h('tbody');
+  S.projekte.forEach(x => {
+    const a = P.filter(p => p.projekt_id === x.id), an = a.filter(zaehltJetzt);
+    bp.append(h('tr', null, h('td', null, flagge(x.flagge, 'mini'), ' ' + x.name), h('td', { text: a.length }), h('td', { text: a.filter(p => p.zaehlt).length }), h('td', { text: an.length ? eur(summe(an)) + ' (' + an.length + ')' : '–' })));
+  });
+  tp.append(bp);
   const sh = sheetEl('Übersicht und Wert', h('div', { class: 'sheet-b' },
     h('div', { class: 'ue-grid' },
       karte('main', 'Angekommen', eur(summe(jetzt)), jetzt.length + (jetzt.length === 1 ? ' Person' : ' Personen')),
       karte('', 'Angehakt, wartet noch', eur(summe(wartet)), wartet.length + (wartet.length === 1 ? ' Person' : ' Personen') + ', zählt ab ' + abL),
       karte('', 'Nicht dazugerechnet', String(nein.length), nein.length === 1 ? 'Person bekommt keinen Wert' : 'Personen bekommen keinen Wert')),
     h('div', { class: 'fg table-wrap' }, tb),
+    h('div', { class: 'fg table-wrap' }, tp),
     h('p', { class: 'hint', text: 'Dateispeicher: ' + (((S.einst.dateien_bytes || 0) / 1048576).toFixed(1).replace('.', ',')) + ' MB von 300 MB' + ((S.einst.dateien_bytes || 0) > 0.8 * 314572800 ? ' (fast voll, bitte alte Dateien löschen)' : '') }),
     h('p', { class: 'hint', text: 'Standardwert ' + eur(S.einst.standardwert) + ' je Person, zählt ab Stufe "' + abL + '", und nur bei Personen mit "Dazurechnen". ' + P.length + (P.length === 1 ? ' Person' : ' Personen') + ' insgesamt.' }),
     h('button', { class: 'btn', text: 'Einstellungen ändern', onclick: () => { sh.__close(); profilSheet(); } })),
@@ -843,6 +986,7 @@ function importSheet() {
   const ta = h('textarea', { id: 'imp', rows: 8, placeholder: 'Anna Beispiel\nBen Muster\n\noder aus Excel oder Sheets kopieren: Name, State, Nummer, E-Mail, Adresse', 'aria-label': 'Liste' });
   const skip = h('input', { id: 'imp-skip', class: 'sw', type: 'checkbox', role: 'switch', checked: true });
   const prev = h('div'); const err = h('p', { class: 'err' });
+  const projI = h('select', { id: 'imp-projekt', 'aria-label': 'In welches Projekt' }, ...S.projekte.map(x => h('option', { value: x.id, text: x.name }))); projI.value = S.f.projekt !== 'alle' ? S.f.projekt : 'usa';
   const go = h('button', { class: 'tbtn strong', type: 'button', text: 'Einspielen', disabled: true });
   let parsed = { rows: [], fehler: [] };
   ta.addEventListener('input', () => {
@@ -851,7 +995,7 @@ function importSheet() {
     if (!ta.value.trim()) return;
     const vorhanden = new Set(S.personen.map(x => toks(x.name).sort().join(' ')));
     const schon = parsed.rows.filter(r => vorhanden.has(toks(r.name).sort().join(' '))).length;
-    prev.append(h('p', { class: 'hint', text: parsed.rows.length + ' Personen erkannt' + (schon ? ', davon ' + schon + ' schon in der Liste' : '') + (parsed.fehler.length ? ', ' + parsed.fehler.length + ' Zeilen ohne Name übersprungen' : '') + '. Vorschau der ersten 5:' }));
+    prev.append(h('p', { class: 'hint', text: parsed.rows.length + ' Personen erkannt' + (schon ? ', davon ' + schon + ' mit gleichem Namen schon in der Liste' : '') + (parsed.fehler.length ? ', ' + parsed.fehler.length + ' Zeilen ohne Name übersprungen' : '') + '. Vorschau der ersten 5:' }));
     const tb = h('table', { class: 'pv' }, h('thead', null, h('tr', null, ...['Name', 'State', 'Nummer', 'E-Mail', 'Adresse', 'Stufe'].map(t => h('th', { text: t })))));
     const body = h('tbody'); parsed.rows.slice(0, 5).forEach(r => body.append(h('tr', null, ...['name', 'state', 'nummer', 'email', 'adresse', 'status'].map(k => h('td', { text: r[k] ? (k === 'status' ? STATUS_L[r[k]] : r[k]) : '' })))));
     tb.append(body); prev.append(h('div', { class: 'fg table-wrap' }, tb));
@@ -860,7 +1004,7 @@ function importSheet() {
     err.textContent = ''; go.disabled = true; let neu = 0, ueb = 0;
     try {
       for (let i = 0; i < parsed.rows.length; i += 200) {
-        const r = await rpc('tr_import', { p_code: S.code, p_zeilen: parsed.rows.slice(i, i + 200), p_doppelte_ueberspringen: skip.checked });
+        const r = await rpc('tr_import', { p_code: S.code, p_zeilen: parsed.rows.slice(i, i + 200).map(r => ({ ...r, projekt: projI.value })), p_doppelte_ueberspringen: skip.checked });
         neu += r.neu; ueb += r.uebersprungen;
       }
       await laden(false); sh.__close(); toast(neu + ' Personen eingespielt' + (ueb ? ', ' + ueb + ' Doppelte übersprungen' : ''));
@@ -869,7 +1013,7 @@ function importSheet() {
   const sh = sheetEl('Liste einfügen', h('div', { class: 'sheet-b' },
     h('p', { class: 'hint', text: 'Eine Person pro Zeile. Nur Namen geht. Mit mehreren Spalten (Tab, Semikolon, oder Komma mit Kopfzeile) gilt die Reihenfolge Name, State, Nummer, E-Mail, Adresse. Oder die Kopfzeile bestimmt die Spalten (Name, State, Nummer, E-Mail, Adresse, Status, Zuständig, Notiz).' }),
     h('div', { class: 'fg' }, h('label', { class: 'fr one' }, ta)),
-    h('div', { class: 'fg' }, h('label', { class: 'fr sw-row' }, h('span', { class: 'fl', text: 'Namen überspringen, die schon in der Liste sind' }), skip)),
+    h('div', { class: 'fg' }, frow('Projekt', projI), h('label', { class: 'fr sw-row' }, h('span', { class: 'fl', text: 'Doppelte Namen oder Mails überspringen' }), skip)),
     prev, err), { wide: true, left: h('button', { class: 'tbtn', type: 'button', text: 'Abbrechen', onclick: () => sh.__close() }), right: go });
   oeffne(sh, false); ta.focus();
 }
@@ -877,8 +1021,8 @@ function importSheet() {
 /* ---------- CSV (Admin) */
 function exportCsv() {
   const sicher = v => { let s = v == null ? '' : String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
-  const kopf = ['Name', 'Adressnummer', 'State', 'Nummer', 'E-Mail', 'Adresse', 'Stufe', 'Dazurechnen', 'Wert', 'Zuständig', 'Notiz', 'Angelegt von', 'Geändert von', 'Geändert'];
-  const zeilen = sortiere(S.personen).map(p => [p.name, p.adressnummer, p.state, p.nummer, p.email, p.adresse, STATUS_L[p.status], p.zaehlt ? 'ja' : 'nein', p.wert == null ? '' : String(p.wert).replace('.', ','), p.zustaendig, p.notiz, p.erstellt_von, p.geaendert_von, p.geaendert ? new Date(p.geaendert).toLocaleString('de-DE') : ''].map(sicher).join(';'));
+  const kopf = ['Projekt', 'Name', 'Adressnummer', 'State', 'Nummer', 'E-Mail', 'Adresse', 'Mail-Status', 'Bet Online', 'Stake', 'Stufe', 'Dazurechnen', 'Wert', 'Zuständig', 'Notiz', 'Angelegt von', 'Geändert von', 'Geändert'];
+  const zeilen = sortiere(S.personen).map(p => [projektTitel(p.projekt_id), p.name, p.adressnummer, p.state, p.nummer, p.email, p.adresse, p.mail_status === 'erhalten' ? 'Erhalten' : p.mail_status === 'erstellt' ? 'Erstellt' : '', p.betonline ? 'ja' : 'nein', p.stake ? 'ja' : 'nein', STATUS_L[p.status], p.zaehlt ? 'ja' : 'nein', p.wert == null ? '' : String(p.wert).replace('.', ','), p.zustaendig, p.notiz, p.erstellt_von, p.geaendert_von, p.geaendert ? new Date(p.geaendert).toLocaleString('de-DE') : ''].map(sicher).join(';'));
   const blob = new Blob(['﻿' + [kopf.map(sicher).join(';'), ...zeilen].join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = h('a', { href: URL.createObjectURL(blob), download: 'adress-tracker-' + heute() + '.csv' });
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
