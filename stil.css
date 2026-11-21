@@ -493,6 +493,7 @@ h1 { margin: 0; font-size: 32px; line-height: 1.08; font-weight: 700; letter-spa
 /* Flaggen */
 .flag { width: 34px; height: auto; border-radius: 4px; flex: none; display: block; box-shadow: 0 0 0 1px rgba(128, 128, 128, .35); }
 .flag.big { width: 72px; border-radius: 6px; }
+.flag.mini2 { width: 30px; border-radius: 3px; }
 .flag.mini { width: 20px; border-radius: 3px; display: inline-block; vertical-align: -3px; }
 .nav-item .flag { margin-right: 2px; }
 .tflag { display: inline-flex; margin-right: 10px; vertical-align: middle; }
@@ -518,7 +519,6 @@ h1 { margin: 0; font-size: 32px; line-height: 1.08; font-weight: 700; letter-spa
 .pc-m b { font-size: 22px; font-variant-numeric: tabular-nums; color: var(--st-gruen-fg); }
 .pc-m small { color: var(--text-2); margin-left: 6px; font-size: 13px; }
 .pc-k { font-size: 12.5px; color: var(--text-2); }
-.pcard.alle .flag-ersatz { width: 72px; height: 48px; display: grid; place-items: center; border-radius: 6px; background: var(--fill); color: var(--text-2); }
 .start-sum { margin: 18px 4px 0; color: var(--blue-text); font-size: 14px; text-align: center; }
 
 /* Aehnlich und doppelt */
@@ -553,3 +553,48 @@ h1 { margin: 0; font-size: 32px; line-height: 1.08; font-weight: 700; letter-spa
   .start-actions .btn .lbl { display: none; }
   .start-actions .btn { padding: 0 12px; }
 }
+
+/* Projekt-Symbole: Emoji und Foto */
+.psym { flex: none; }
+.psym.emoji.mini { font-size: 15px; line-height: 1; width: 20px; text-align: center; display: inline-block; vertical-align: -2px; }
+.psym.emoji.big { width: 72px; height: 48px; display: grid; place-items: center; font-size: 36px; line-height: 1; background: var(--fill); border-radius: 8px; color: var(--text-2); }
+.psym.bild.mini { width: 20px; height: 20px; border-radius: 4px; object-fit: cover; display: inline-block; vertical-align: -4px; }
+.psym.bild.big { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; display: block; }
+.psym .ic { width: 28px; height: 28px; }
+
+/* Startbildschirm: gemeinsamer Gewinn, Karten, Projekt erstellen */
+.gesamt { appearance: none; -webkit-appearance: none; border: 0; width: 100%; text-align: left; font: inherit; color: var(--text); cursor: pointer; background: var(--elev); border-radius: 18px; padding: 18px 20px; display: grid; gap: 2px; margin: 6px 0 4px; box-shadow: 0 1px 0 var(--sep); }
+.gesamt:hover { filter: brightness(.97); }
+.gesamt:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
+.g-l { font-size: 13.5px; color: var(--text-2); font-weight: 600; }
+.g-n { font-size: 38px; font-weight: 750; letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--st-gruen-fg); line-height: 1.1; }
+.g-s { font-size: 14px; color: var(--text-2); }
+.pwrap { position: relative; display: grid; }
+.pwrap > .pcard { width: 100%; }
+.pc-edit { position: absolute; top: 10px; right: 10px; appearance: none; -webkit-appearance: none; border: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--fill); color: var(--text-2); display: grid; place-items: center; cursor: pointer; }
+.pc-edit:hover { background: var(--fill-2); color: var(--text); }
+.pc-edit:focus-visible { outline: 3px solid var(--ring); }
+.pc-edit .ic { width: 18px; height: 18px; }
+.pcard.neu { background: transparent; box-shadow: none; border: 2px dashed var(--text-3); color: var(--text-2); align-content: center; }
+.pcard.neu:hover { border-color: var(--blue); color: var(--blue-text); background: var(--blue-soft); filter: none; }
+.pcard.neu .psym.plus { background: var(--blue-soft); color: var(--blue-text); }
+.pcard.neu .pc-t strong { color: inherit; }
+
+/* Projekt-Sheet: Bildauswahl */
+.pr-vor { display: grid; place-items: center; padding: 6px 0 2px; }
+.pr-vor .flag.big { width: 96px; }
+.pr-vor .psym.emoji.big { width: 96px; height: 64px; font-size: 44px; }
+.pr-vor .psym.bild.big { width: 72px; height: 72px; }
+.segc3 { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--fill); border-radius: 9px; padding: 2px; gap: 2px; }
+.segc3 .seg { appearance: none; -webkit-appearance: none; border: 0; background: transparent; border-radius: 7px; padding: 8px 0; font-size: 14.5px; font-weight: 600; color: var(--text-2); }
+.segc3 .seg[aria-pressed="true"] { background: var(--elev); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .18); }
+.pr-feld { display: grid; gap: 10px; }
+.pg { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 8px; }
+.pg-b { appearance: none; -webkit-appearance: none; border: 2px solid transparent; background: var(--fill); border-radius: 10px; min-height: 44px; display: grid; place-items: center; font-size: 24px; padding: 6px; color: var(--text); }
+.pg-b[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft); }
+.pg-b:focus-visible { outline: 3px solid var(--ring); }
+.pr-eigen { height: 44px; border-radius: 10px; border: 1px solid var(--sep); background: var(--fill); color: var(--text); padding: 0 12px; font-size: 16px; }
+
+/* Uebersicht und Konten-Hinweise */
+.pv tr.tot td { font-weight: 700; border-top: 2px solid var(--sep); }
+.khint { display: grid; gap: 2px; }

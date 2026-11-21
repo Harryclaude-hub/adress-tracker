@@ -2,7 +2,8 @@
 
 Gemeinsame Liste fuer Personen mit State, Nummer, E-Mail, zugeteilter Adresse und Adressnummer. Stufen von Hand (Leer, Zu erledigen,
 Erledigt, Uebernommen, Test), Dateien und Fotos je Person, ein Wert in Euro je Person (Standard einstellbar) mit "Dazurechnen" und eine
-Uebersicht, was schon angekommen ist. Startbildschirm mit Projekten (USA, Bangladesch, Finnland). Kein Name und keine Mail darf in der ganzen Datenbank doppelt
+Uebersicht, was schon angekommen ist. Startbildschirm mit Projekten (USA, Bangladesch, Finnland, weitere selbst anlegen mit Flagge, Emoji oder Foto), der Gewinn ist ueber alle
+Projekte gemeinsam. Kein Name und keine Mail darf in der ganzen Datenbank doppelt
 vorkommen, aehnliche Namen werden blau gezeigt. Mail-Status (erhalten, erstellt) und Konten (Bet Online, Stake).
 Eine Seite (`index.html`), keine Build-Schritte, Daten in einem eigenen Supabase-Projekt.
 

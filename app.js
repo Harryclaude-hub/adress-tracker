@@ -108,6 +108,7 @@ const ICONS = {
   down: 'M12 4v11M7.5 11L12 15.5 16.5 11M5 20h14',
   sum: 'M18 5H6l6 7-6 7h12',
   back: 'M15 5l-7 7 7 7',
+  edit: 'M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4',
 };
 function ic(name) {
   const ns = 'http://www.w3.org/2000/svg';
@@ -133,22 +134,20 @@ function lev(a, b) {
   }
   return prev[b.length];
 }
-/* 'exakt' = gleicher Name (auch mit vertauschter Reihenfolge), 'aehnlich' = Tippfehler oder gleicher Nachname mit aehnlichem Vornamen */
+/* 'exakt' = gleicher Name (auch vertauscht). 'aehnlich' = wirklich fast gleich: nur Doppelbuchstaben (Anna / Ana) oder ein
+   Buchstabe anders (Jon / John), bei sehr langen Namen zwei. Alles andere zaehlt nicht als aehnlich. */
+const kollabiere = t => t.replace(/(.)\1+/g, '$1');
 function aehnlich(a, b) {
   const na = norm(a), nb = norm(b);
   if (!na || !nb) return null;
   if (na === nb) return 'exakt';
-  const A = toks(a), B = toks(b);
-  const sa = A.slice().sort().join(' '), sb = B.slice().sort().join(' ');
+  const sa = toks(a).sort().join(' '), sb = toks(b).sort().join(' ');
   if (sa === sb) return 'exakt';
-  const lim = Math.max(na.length, nb.length) <= 8 ? 1 : 2;
-  if (lev(na, nb) <= lim || lev(sa, sb) <= lim) return 'aehnlich';
-  if (A.length >= 2 && B.length >= 2) {
-    const fa = A[0], fb = B[0], la = A[A.length - 1], lb = B[B.length - 1];
-    if (la === lb && (fa === fb || fa.startsWith(fb) || fb.startsWith(fa) || lev(fa, fb) <= 2)) return 'aehnlich';
-    if (fa === fb && lev(la, lb) <= 2) return 'aehnlich';
-  }
-  return null;
+  if (kollabiere(sa) === kollabiere(sb)) return 'aehnlich';
+  const kurz = Math.min(sa.length, sb.length);
+  if (kurz < 6) return null;
+  const lim = kurz >= 14 ? 2 : 1;
+  return (lev(sa, sb) <= lim || lev(na, nb) <= lim) ? 'aehnlich' : null;
 }
 
 /* Titel einer Zeile: Name, sonst das erste ausgefuellte Feld (E-Mail, Nummer, ...). k = welches Feld es war. */
@@ -176,6 +175,12 @@ const FEHLER = {
   datei_typ_nicht_erlaubt: 'Diesen Dateityp gibt es hier nicht. Erlaubt sind Bilder, PDF, Word, Excel, PowerPoint, ZIP, TXT und CSV.',
   datei_inhalt_passt_nicht: 'Der Inhalt passt nicht zur Dateiendung. Die Datei wurde nicht gespeichert.',
   zu_schnell: 'Zu viele Dateien auf einmal. Bitte eine Minute warten.',
+  projekt_name_fehlt: 'Bitte dem Projekt einen Namen geben.',
+  projekt_name_vergeben: 'Ein Projekt mit diesem Namen gibt es schon.',
+  symbol_ungueltig: 'Das Bild des Projekts ist ungültig. Bitte Flagge, Emoji oder Foto neu wählen.',
+  projekt_nicht_leer: 'In diesem Projekt sind noch Personen. Verschiebe sie zuerst in ein anderes Projekt.',
+  letztes_projekt: 'Das letzte Projekt kann nicht gelöscht werden.',
+  zu_viele_projekte: 'Mehr als 30 Projekte gehen nicht.',
   name_doppelt: 'Diesen Namen gibt es schon (in irgendeinem Projekt). Kein Name darf doppelt vorkommen.',
   mail_doppelt: 'Diese E-Mail gibt es schon (in irgendeinem Projekt). Keine Mail darf doppelt vorkommen.',
   stake_gesperrt: 'Bet Online ist bei dieser Person schon gesetzt, deshalb geht Stake nicht mehr.',
@@ -394,7 +399,7 @@ function zeichne() {
   if (S.f.projekt !== 'alle' && !S.projekte.some(x => x.id === S.f.projekt)) S.f.projekt = 'alle';
   const pr = S.f.projekt === 'alle' ? null : projektVon(S.f.projekt), inP = S.personen.filter(imProjekt);
   $('#title').textContent = (pr ? pr.name : 'Alle Personen') + (S.f.status === 'alle' ? '' : ' · ' + STATUS_L[S.f.status]);
-  const tf = $('#tflag'); tf.textContent = ''; if (pr) tf.append(flagge(pr.flagge, 'mini'));
+  const tf = $('#tflag'); tf.textContent = ''; if (pr) tf.append(projektSymbol(pr, 'mini'));
   setSub();
 
   // Seitenleiste
@@ -403,7 +408,7 @@ function zeichne() {
   STATUS.forEach(s => ss.append(navItem(s.l, cnt[s.k], S.f.status === s.k, () => { S.f.status = s.k; zeichne(); }, s.k)));
   const sl = $('#sideLand'); sl.textContent = '';
   sl.append(navItem('Alle Länder', S.personen.length, S.f.projekt === 'alle', () => { S.f.projekt = 'alle'; zeichne(); }));
-  S.projekte.forEach(x => { const b = navItem(x.name, S.personen.filter(p => p.projekt_id === x.id).length, S.f.projekt === x.id, () => { S.f.projekt = x.id; zeichne(); }); b.prepend(flagge(x.flagge, 'mini')); sl.append(b); });
+  S.projekte.forEach(x => { const b = navItem(x.name, S.personen.filter(p => p.projekt_id === x.id).length, S.f.projekt === x.id, () => { S.f.projekt = x.id; zeichne(); }); b.prepend(projektSymbol(x, 'mini')); sl.append(b); });
   const sm = $('#sideMail'); sm.textContent = '';
   MAIL_FILTER.forEach(([k, l]) => sm.append(navItem(l, inP.filter(p => mailPasst(p, k)).length, S.f.mail === k, () => { S.f.mail = k; zeichne(); })));
   const sk = $('#sideKonto'); sk.textContent = '';
@@ -445,7 +450,7 @@ function zeichne() {
 function aehnTag(p) {
   const am = aehnlichkeiten().get(p.id); if (!am || !am.length) return null;
   const ex = am.some(x => x.art === 'exakt');
-  return h('span', { class: 'tag ' + (ex ? 'rot' : 'blue'), title: (ex ? 'Gleicher Name wie: ' : 'Ähnlich wie: ') + am.map(x => titel(x.p) + ' (' + projektTitel(x.p.projekt_id) + ')').join(', '), text: ex ? 'Doppelt' : 'Ähnlich' });
+  return h('span', { class: 'tag ' + (ex ? 'rot' : 'blue'), title: am.map(x => (x.art === 'exakt' ? 'Gleiche' + (x.was === 'Name' ? 'r Name' : ' E-Mail') : 'Ähnliche' + (x.was === 'Name' ? 'r Name' : ' E-Mail')) + ' wie ' + titel(x.p) + ' (' + projektTitel(x.p.projekt_id) + ')').join('; '), text: ex ? 'Doppelt' : 'Ähnlich' });
 }
 function zeile(p) {
   const tv = titelVon(p);
@@ -461,7 +466,7 @@ function zeile(p) {
   const subm = h('div', { class: 'sub-m', text: [p.state ? p.state + (STATES[p.state] ? ' · ' + STATES[p.state] : '') : 'Ohne State'].join(' · ') });
   return h('div', { class: 'row', 'data-id': p.id },
     h('label', { class: 'cb' }, h('input', { class: 'cbx', type: 'checkbox', checked: !!p.zaehlt, 'aria-label': 'Dazurechnen: ' + tv.t, title: 'Dazurechnen', onchange: e => quick(p.id, { zaehlt: e.target.checked }) })),
-    h('div', { class: 'c-main' }, h('div', { class: 'nmline' }, S.f.projekt === 'alle' ? flagge(projektVon(p.projekt_id).flagge, 'mini') : null, h('button', { class: 'nm', text: tv.t, onclick: () => personSheet(p.id) }), p.adressnummer ? h('span', { class: 'nr', title: 'Adressnummer', text: 'Nr. ' + p.adressnummer }) : null, p.dateien ? h('span', { class: 'nr', title: 'Dateien', text: p.dateien + (p.dateien === 1 ? ' Datei' : ' Dateien') }) : null, p.betonline ? h('span', { class: 'kt bo', text: 'Bet Online' }) : null, p.stake ? h('span', { class: 'kt st', text: 'Stake' }) : null, aehnTag(p)), sub, subm),
+    h('div', { class: 'c-main' }, h('div', { class: 'nmline' }, S.f.projekt === 'alle' ? projektSymbol(projektVon(p.projekt_id), 'mini') : null, h('button', { class: 'nm', text: tv.t, onclick: () => personSheet(p.id) }), p.adressnummer ? h('span', { class: 'nr', title: 'Adressnummer', text: 'Nr. ' + p.adressnummer }) : null, p.dateien ? h('span', { class: 'nr', title: 'Dateien', text: p.dateien + (p.dateien === 1 ? ' Datei' : ' Dateien') }) : null, p.betonline ? h('span', { class: 'kt bo', text: 'Bet Online' }) : null, p.stake ? h('span', { class: 'kt st', text: 'Stake' }) : null, aehnTag(p)), sub, subm),
     p.state ? h('div', { class: 'c-state', title: STATES[p.state] || p.state, text: p.state }) : h('div', { class: 'c-state leer', text: 'ohne' }),
     h('div', { class: 'c-status' }, stsel),
     h('div', { class: 'c-last' }, rel(p.geaendert), h('br'), p.geaendert_von ? 'von ' + p.geaendert_von : ''));
@@ -584,14 +589,29 @@ function personSheet(id) {
   /* Konten: Bet Online zuerst sperrt Stake. Stake zuerst erlaubt Bet Online danach. */
   const origBet = !!p.betonline, origStake = !!p.stake; let bet = origBet, stk = origStake;
   const betBtn = h('button', { class: 'kbtn bo', type: 'button', text: 'Bet Online' }), stakeBtn = h('button', { class: 'kbtn st', type: 'button', text: 'Stake' });
-  const kHint = h('p', { class: 'hint', text: '' });
+  const kHint = h('div', { class: 'khint' }), kWarn = h('div', { class: 'warn info', hidden: true, role: 'alert' });
+  let stakeOk = origStake && (p.mail_status || '') === 'erhalten';
   const kontenZeigen = () => {
     betBtn.setAttribute('aria-pressed', String(bet)); stakeBtn.setAttribute('aria-pressed', String(stk));
     stakeBtn.disabled = !stk && (bet || (origBet && !origStake));
-    kHint.textContent = stakeBtn.disabled ? 'Bet Online ist gesetzt, deshalb geht Stake bei dieser Person nicht mehr.' : 'Zuerst Stake, danach Bet Online geht. Zuerst Bet Online, danach Stake geht nicht.';
+    const ms = mailSel.value;
+    kHint.textContent = '';
+    kHint.append(
+      ms === 'erhalten' ? h('p', { class: 'hint', text: 'Erhaltene Mail: Hier ist nur Bet Online vorgesehen. Bei Stake fragt die Seite nach.' }) : ms === 'erstellt' ? h('p', { class: 'hint', text: 'Selbst erstellte Mail: Stake und Bet Online sind möglich.' }) : null,
+      h('p', { class: 'hint', text: stakeBtn.disabled ? 'Bet Online ist gesetzt, deshalb geht Stake bei dieser Person nicht mehr.' : 'Zuerst Stake, danach Bet Online geht. Zuerst Bet Online, danach Stake geht nicht.' }));
+  };
+  const stakeFrage = () => {
+    kWarn.textContent = ''; kWarn.hidden = false;
+    kWarn.append(h('h3', { text: 'Bist du sicher?' }),
+      h('p', { text: 'Diese Mail wurde nur erhalten, nicht selbst erstellt. Bei erhaltenen Mails ist nur ein Bet-Online-Konto vorgesehen. Willst du trotzdem ein Stake-Konto setzen?' }),
+      h('div', { class: 'warn-actions' },
+        h('button', { class: 'btn', type: 'button', text: 'Ja, Stake setzen', onclick: () => { stakeOk = true; kWarn.hidden = true; stk = true; kontenZeigen(); } }),
+        h('button', { class: 'btn', type: 'button', text: 'Abbrechen', onclick: () => { kWarn.hidden = true; } })));
+    kWarn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   };
   betBtn.addEventListener('click', () => { bet = !bet; kontenZeigen(); });
-  stakeBtn.addEventListener('click', () => { if (stakeBtn.disabled) return; stk = !stk; kontenZeigen(); });
+  stakeBtn.addEventListener('click', () => { if (stakeBtn.disabled) return; if (!stk && mailSel.value === 'erhalten' && !stakeOk) { stakeFrage(); return; } stk = !stk; kontenZeigen(); });
+  mailSel.addEventListener('change', kontenZeigen);
   kontenZeigen();
   const wert = h('input', { id: 'd-wert', value: p.wert == null ? '' : String(p.wert).replace('.', ','), inputmode: 'decimal', autocomplete: 'off', maxlength: 10, placeholder: 'Standard ' + eur(S.einst.standardwert) });
   const adresse = h('textarea', { id: 'd-adresse', maxlength: 500, placeholder: 'Zugeteilte Adresse', rows: 2 }); adresse.value = p.adresse || '';
@@ -613,7 +633,8 @@ function personSheet(id) {
       if (x.id === id) continue;
       const gruende = []; const a = n ? aehnlich(n, x.name) : null;
       if (a === 'exakt') gruende.push('Name gleich'); else if (a) gruende.push('Name sehr ähnlich');
-      if (em && x.email && x.email.toLowerCase() === em) gruende.push('Gleiche E-Mail');
+      const ma = em && x.email ? mailAehnlich(email.value, x.email) : null;
+      if (ma === 'exakt') gruende.push('Gleiche E-Mail'); else if (ma) gruende.push('E-Mail sehr ähnlich');
       if (ph.length >= 7 && x.nummer && x.nummer.replace(/\D/g, '') === ph) gruende.push('Gleiche Nummer');
       if (an && x.adressnummer && x.adressnummer.trim().toLowerCase() === an) gruende.push('Gleiche Adressnummer');
       if (gruende.length) out.push({ p: x, gruende, exakt: a === 'exakt', hart: gruende.includes('Name gleich') || gruende.includes('Gleiche E-Mail') });
@@ -626,7 +647,7 @@ function personSheet(id) {
     warnBox.className = 'warn ' + (hart ? 'hart' : 'info');
     const mine = { name: name.value.trim(), adressnummer: anr.value.trim(), state: st.value, nummer: nummer.value.trim(), email: email.value.trim(), adresse: adresse.value.trim(), status: status.value };
     warnBox.append(h('h3', { text: hart ? 'Das gibt es schon, Sichern geht nicht' : 'Diese Person gibt es vielleicht schon' }),
-      h('p', { text: hart ? 'Kein Name und keine E-Mail darf doppelt vorkommen, in keinem Projekt. Öffne die vorhandene Person oder ändere deinen Eintrag.' : 'Der Name ist sehr ähnlich. Bitte vergleiche beide. Wenn du trotzdem sicherst, gibt es zwei ähnliche Einträge.' }));
+      h('p', { text: hart ? 'Kein Name und keine E-Mail darf doppelt vorkommen, in keinem Projekt. Öffne die vorhandene Person oder ändere deinen Eintrag.' : 'Name oder E-Mail sind einem vorhandenen Eintrag sehr ähnlich. Vielleicht ist es dieselbe Person. Bitte vergleiche beide. Wenn du trotzdem sicherst, gibt es zwei ähnliche Einträge.' }));
     list.forEach(t => {
       const x = t.p;
       const val = (k, a, b) => { const same = a && b && norm(a) === norm(b); return [h('div', { class: 'v' + (same ? ' same' : (a || b ? ' diff' : '')), text: a || '–' }), h('div', { class: 'v' + (same ? ' same' : (a || b ? ' diff' : '')), text: b || '–' })]; };
@@ -634,7 +655,7 @@ function personSheet(id) {
       const grid = h('div', { class: 'cmp' }, h('div', { class: 'h' }), h('div', { class: 'h', text: 'Dein Eintrag' }), h('div', { class: 'h', text: 'Schon in der Liste' }));
       rows.forEach(([k, a, b]) => grid.append(h('div', { class: 'k', text: k }), ...val(k, a, b)));
       warnBox.append(h('div', { class: 'cmp-card' },
-        h('div', { class: 'cmp-top' }, flagge(projektVon(x.projekt_id).flagge, 'mini'), h('strong', { text: projektTitel(x.projekt_id) }), ...t.gruende.map(g => h('span', { class: 'tag ' + (g === 'Name gleich' || g === 'Gleiche E-Mail' ? 'rot' : 'blue'), text: g }))),
+        h('div', { class: 'cmp-top' }, projektSymbol(projektVon(x.projekt_id), 'mini'), h('strong', { text: projektTitel(x.projekt_id) }), ...t.gruende.map(g => h('span', { class: 'tag ' + (g === 'Name gleich' || g === 'Gleiche E-Mail' ? 'rot' : 'blue'), text: g }))),
         grid,
         h('div', { class: 'meta', text: 'Angelegt von ' + (x.erstellt_von || 'unbekannt') + ', ' + rel(x.erstellt) }),
         h('div', { class: 'warn-actions' }, h('button', { class: 'btn sm', type: 'button', text: 'Vorhandene öffnen', onclick: () => { sh.__close(); personSheet(x.id); } }))));
@@ -662,6 +683,7 @@ function personSheet(id) {
     if (Number.isNaN(wz)) { err.textContent = 'Bitte beim Wert eine Zahl eintragen, zum Beispiel 40 oder 35,50.'; wert.focus(); return; }
     const list = treffer();
     if (list.some(t => t.hart)) { zeigeWarnung(list, true); bestaetigt = false; warnBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
+    if (mailSel.value === 'erhalten' && stk && !stakeOk) { stakeFrage(); return; }
     if (list.length && !bestaetigt) {
       zeigeWarnung(list, false); bestaetigt = true; setLabel('Trotzdem sichern', true);
       warnBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return;
@@ -697,7 +719,7 @@ function personSheet(id) {
     h('div', { class: 'fg' }, frow('Projekt', projSel), frow('Name', name), soft, frow('Adressnr.', anr), frow('State', st)),
     h('div', { class: 'fg' }, frow('Stufe', status), frow('Wert (€)', wert), h('label', { class: 'fr sw-row' }, h('span', { class: 'fl', text: 'Dazurechnen' }), haken)),
     h('div', { class: 'fg' }, frow('Nummer', nummer, cp(() => nummer.value)), frow('E-Mail', email, h('span', { class: 'xtra' }, mailSel, cp(() => email.value))), frow('Adresse', adresse, cp(() => adresse.value), true)),
-    h('div', null, h('div', { class: 'fg' }, h('div', { class: 'fr konto' }, h('span', { class: 'fl', text: 'Konten' }), h('div', { class: 'kbtns' }, betBtn, stakeBtn))), kHint),
+    h('div', null, h('div', { class: 'fg' }, h('div', { class: 'fr konto' }, h('span', { class: 'fl', text: 'Konten' }), h('div', { class: 'kbtns' }, betBtn, stakeBtn))), kWarn, kHint),
     h('div', { class: 'fg' }, frow('Zuständig', zust), frow('Notiz', notiz, null, true)),
     h('div', null, h('div', { class: 'fg-t', text: 'Dateien und Fotos' }), bereich.el),
     !neu && p.geaendert_von ? h('p', { class: 'meta', text: 'Zuletzt geändert von ' + p.geaendert_von + ', ' + rel(p.geaendert) + '. Angelegt von ' + (p.erstellt_von || 'unbekannt') + '.' }) : null,
@@ -707,24 +729,56 @@ function personSheet(id) {
   (neu ? name : status).focus();
 }
 
-/* ---------- Flaggen (als Zeichnung, weil Windows keine Flaggen-Emojis zeigt) */
+/* ---------- Flaggen (als Zeichnung, weil Windows keine Flaggen-Emojis zeigt). Alle im Format 30 x 20. */
 function svgEl(tag, a) { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [k, v] of Object.entries(a || {})) e.setAttribute(k, v); return e; }
+const streifenH = (...f) => f.map((c, i) => ['r', 0, i * 20 / f.length, 30, 20 / f.length + .02, c]);
+const streifenV = (...f) => f.map((c, i) => ['r', i * 30 / f.length, 0, 30 / f.length + .02, 20, c]);
+const kreuz = (x, y, w, farbe) => [['r', x, 0, w, 20, farbe], ['r', 0, y, 30, w, farbe]];
+const FLAGGEN = {
+  us: { n: 'USA', z: [['r', 0, 0, 30, 20, '#fff'], ...[0, 2, 4, 6, 8, 10, 12].map(i => ['r', 0, i * 20 / 13, 30, 20 / 13, '#b22234']), ['r', 0, 0, 12, 10.8, '#3c3b6e'],
+    ...[0, 1, 2, 3].flatMap(i => [0, 1, 2].map(j => ['c', 1.8 + i * 3, 2 + j * 3.2, .55, '#fff']))] },
+  gb: { n: 'Großbritannien', z: [['r', 0, 0, 30, 20, '#012169'], ['l', 0, 0, 30, 20, '#fff', 4], ['l', 30, 0, 0, 20, '#fff', 4], ['l', 0, 0, 30, 20, '#c8102e', 1.3], ['l', 30, 0, 0, 20, '#c8102e', 1.3],
+    ['r', 12, 0, 6, 20, '#fff'], ['r', 0, 7, 30, 6, '#fff'], ['r', 13, 0, 4, 20, '#c8102e'], ['r', 0, 8, 30, 4, '#c8102e']] },
+  de: { n: 'Deutschland', z: streifenH('#000', '#dd0000', '#ffce00') },
+  fr: { n: 'Frankreich', z: streifenV('#0055a4', '#fff', '#ef4135') },
+  it: { n: 'Italien', z: streifenV('#009246', '#fff', '#ce2b37') },
+  es: { n: 'Spanien', z: [['r', 0, 0, 30, 20, '#aa151b'], ['r', 0, 5, 30, 10, '#f1bf00']] },
+  ie: { n: 'Irland', z: streifenV('#169b62', '#fff', '#ff883e') },
+  at: { n: 'Österreich', z: streifenH('#ed2939', '#fff', '#ed2939') },
+  nl: { n: 'Niederlande', z: streifenH('#ae1c28', '#fff', '#21468b') },
+  pl: { n: 'Polen', z: streifenH('#fff', '#dc143c') },
+  ua: { n: 'Ukraine', z: streifenH('#0057b7', '#ffd700') },
+  ru: { n: 'Russland', z: streifenH('#fff', '#0039a6', '#d52b1e') },
+  se: { n: 'Schweden', z: [['r', 0, 0, 30, 20, '#006aa7'], ...kreuz(9, 8, 4, '#fecc00')] },
+  dk: { n: 'Dänemark', z: [['r', 0, 0, 30, 20, '#c8102e'], ...kreuz(9, 8, 4, '#fff')] },
+  no: { n: 'Norwegen', z: [['r', 0, 0, 30, 20, '#ba0c2f'], ...kreuz(8, 7, 6, '#fff'), ...kreuz(9.5, 8.5, 3, '#00205b')] },
+  fi: { n: 'Finnland', z: [['r', 0, 0, 30, 20, '#fff'], ...kreuz(8, 7.75, 4.5, '#003580')] },
+  ch: { n: 'Schweiz', z: [['r', 0, 0, 30, 20, '#d52b1e'], ['r', 13, 4, 4, 12, '#fff'], ['r', 9, 8, 12, 4, '#fff']] },
+  jp: { n: 'Japan', z: [['r', 0, 0, 30, 20, '#fff'], ['c', 15, 10, 6, '#bc002d']] },
+  bd: { n: 'Bangladesch', z: [['r', 0, 0, 30, 20, '#006a4e'], ['c', 13.5, 10, 6, '#f42a41']] },
+  tr: { n: 'Türkei', z: [['r', 0, 0, 30, 20, '#e30a17'], ['c', 11, 10, 5, '#fff'], ['c', 12.4, 10, 4, '#e30a17'], ['c', 17.2, 10, 1.4, '#fff']] },
+  in: { n: 'Indien', z: [...streifenH('#ff9933', '#fff', '#138808'), ['c', 15, 10, 2.6, 'none', '#000080', .5]] },
+  br: { n: 'Brasilien', z: [['r', 0, 0, 30, 20, '#009c3b'], ['p', '15,2 27,10 15,18 3,10', '#ffdf00'], ['c', 15, 10, 4, '#002776']] },
+};
 function flagge(code, groesse) {
-  const W = { us: 38, bd: 30, fi: 36 }[code] || 30, H = { us: 26, bd: 18, fi: 22 }[code] || 20;
-  const s = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'flag ' + (groesse || ''), 'aria-hidden': 'true' });
-  const r = (x, y, w, hh, f) => s.append(svgEl('rect', { x, y, width: w, height: hh, fill: f }));
-  if (code === 'us') {
-    r(0, 0, 38, 26, '#fff'); for (let i = 0; i < 13; i += 2) r(0, i * 2, 38, 2, '#b22234');
-    r(0, 0, 16, 14, '#3c3b6e');
-    for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) s.append(svgEl('circle', { cx: 2.4 + i * 3.8, cy: 2.6 + j * 4.2, r: 0.85, fill: '#fff' }));
-  } else if (code === 'bd') {
-    r(0, 0, 30, 18, '#006a4e'); s.append(svgEl('circle', { cx: 13.5, cy: 9, r: 5.4, fill: '#f42a41' }));
-  } else if (code === 'fi') {
-    r(0, 0, 36, 22, '#fff'); r(9, 0, 5, 22, '#003580'); r(0, 8.5, 36, 5, '#003580');
-  } else { r(0, 0, W, H, '#8e8e93'); }
+  const f = FLAGGEN[code];
+  const s = svgEl('svg', { viewBox: '0 0 30 20', class: 'flag ' + (groesse || ''), 'aria-hidden': 'true' });
+  for (const t of (f ? f.z : [['r', 0, 0, 30, 20, '#8e8e93']])) {
+    if (t[0] === 'r') s.append(svgEl('rect', { x: t[1], y: t[2], width: t[3], height: t[4], fill: t[5] }));
+    else if (t[0] === 'c') s.append(svgEl('circle', { cx: t[1], cy: t[2], r: t[3], fill: t[4], stroke: t[5] || 'none', 'stroke-width': t[6] || 0 }));
+    else if (t[0] === 'l') s.append(svgEl('line', { x1: t[1], y1: t[2], x2: t[3], y2: t[4], stroke: t[5], 'stroke-width': t[6] }));
+    else if (t[0] === 'p') s.append(svgEl('polygon', { points: t[1], fill: t[2] }));
+  }
   return s;
 }
-const projektVon = id => S.projekte.find(x => x.id === id) || { id, name: String(id || '?'), flagge: '' };
+/* Symbol eines Projekts: Flagge, Emoji oder Foto. Fotos werden nur gezeigt, wenn sie genau ein JPEG als Daten-Adresse sind. */
+function projektSymbol(pr, groesse) {
+  const t = pr.symbol_typ || 'flagge', sym = pr.symbol || '';
+  if (t === 'emoji') return h('span', { class: 'psym emoji ' + (groesse || ''), 'aria-hidden': 'true', text: sym });
+  if (t === 'bild' && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(sym)) return h('img', { class: 'psym bild ' + (groesse || ''), src: sym, alt: '' });
+  return flagge(sym, groesse);
+}
+const projektVon = id => S.projekte.find(x => x.id === id) || { id, name: String(id || '?'), symbol_typ: 'flagge', symbol: '' };
 const projektTitel = id => projektVon(id).name;
 const imProjekt = p => S.f.projekt === 'alle' || p.projekt_id === S.f.projekt;
 const KONTO_FILTER = [['alle', 'Alle'], ['stake', 'Nur Stake'], ['betonline', 'Nur Bet Online'], ['beides', 'Beides'], ['keins', 'Kein Konto']];
@@ -732,14 +786,34 @@ const MAIL_FILTER = [['alle', 'Alle'], ['erhalten', 'Erhalten'], ['erstellt', 'E
 function kontoPasst(p, k) { const b = !!p.betonline, s = !!p.stake; return k === 'alle' || (k === 'stake' && s && !b) || (k === 'betonline' && b && !s) || (k === 'beides' && b && s) || (k === 'keins' && !b && !s); }
 function mailPasst(p, k) { return k === 'alle' || (k === 'ohne' ? !p.mail_status : p.mail_status === k); }
 
-/* Aehnliche Namen ueber ALLE Projekte (wird nur neu gerechnet, wenn sich die Liste aendert). */
+/* Mails vergleichen: gleich ist gleich nach Gross/Klein, ohne +Zusatz, bei Gmail auch ohne Punkte (wie in der Datenbank).
+   Aehnlich nur bei fast gleicher Mail beim selben Anbieter. */
+function mailKey(m) {
+  m = String(m || '').trim().toLowerCase(); if (!m) return '';
+  const i = m.indexOf('@'), l0 = i < 0 ? m : m.slice(0, i), d = i < 0 ? '' : m.slice(i + 1), l = l0.split('+')[0];
+  return (d === 'gmail.com' || d === 'googlemail.com') ? l.replace(/\./g, '') + '@gmail.com' : l + '@' + d;
+}
+function mailAehnlich(a, b) {
+  const ka = mailKey(a), kb = mailKey(b); if (!ka || !kb) return null;
+  if (ka === kb) return 'exakt';
+  const [la, da] = ka.split('@'), [lb, db] = kb.split('@');
+  if (da !== db) return null;
+  const sa = la.replace(/[._-]/g, ''), sb = lb.replace(/[._-]/g, '');
+  if (sa === sb) return 'aehnlich';
+  if (Math.min(sa.length, sb.length) >= 6 && lev(sa, sb) <= 1) return 'aehnlich';
+  return null;
+}
+
+/* Aehnliche Namen und Mails ueber ALLE Projekte (wird nur neu gerechnet, wenn sich die Liste aendert). */
 function aehnlichkeiten() {
   if (S._asig === S.sig && S._amap) return S._amap;
-  const m = new Map(), P = S.personen.filter(p => p.name && p.name.trim());
-  const dazu = (a, b, art) => { if (!m.has(a.id)) m.set(a.id, []); m.get(a.id).push({ p: b, art }); };
+  const m = new Map(), P = S.personen;
+  const dazu = (a, b, art, was) => { if (!m.has(a.id)) m.set(a.id, []); m.get(a.id).push({ p: b, art, was }); };
   for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
-    const art = aehnlich(P[i].name, P[j].name); if (!art) continue;
-    dazu(P[i], P[j], art); dazu(P[j], P[i], art);
+    const n = P[i].name && P[j].name ? aehnlich(P[i].name, P[j].name) : null;
+    if (n) { dazu(P[i], P[j], n, 'Name'); dazu(P[j], P[i], n, 'Name'); }
+    const e = P[i].email && P[j].email ? mailAehnlich(P[i].email, P[j].email) : null;
+    if (e) { dazu(P[i], P[j], e, 'E-Mail'); dazu(P[j], P[i], e, 'E-Mail'); }
   }
   S._asig = S.sig; S._amap = m; return m;
 }
@@ -752,23 +826,28 @@ function oeffneProjekt(id) {
 function zumStart() { schliesseAlle(); S.ansicht = 'start'; aufbau(); }
 function startAufbau() {
   const app = $('#app'); app.textContent = '';
-  const P = S.personen;
+  const P = S.personen, an = P.filter(zaehltJetzt), wartet = P.filter(p => p.zaehlt && !stufeReicht(p));
   const karte = pr => {
-    const a = P.filter(p => p.projekt_id === pr.id), an = a.filter(zaehltJetzt);
+    const a = P.filter(p => p.projekt_id === pr.id), ang = a.filter(zaehltJetzt);
     const er = a.filter(p => p.mail_status === 'erhalten').length, es = a.filter(p => p.mail_status === 'erstellt').length;
-    return h('button', { class: 'pcard', type: 'button', onclick: () => oeffneProjekt(pr.id), 'aria-label': pr.name + ': ' + a.length + (a.length === 1 ? ' Person' : ' Personen') },
-      flagge(pr.flagge, 'big'),
-      h('div', { class: 'pc-t' }, h('strong', { text: pr.name }), h('span', { class: 'pc-s', text: a.length + (a.length === 1 ? ' Person' : ' Personen') })),
-      h('div', { class: 'pc-m' }, h('b', { text: eur(summe(an)) }), h('small', { text: 'angekommen' })),
-      h('div', { class: 'pc-k', text: es + (es === 1 ? ' Mail' : ' Mails') + ' erstellt, ' + er + ' erhalten' }));
+    return h('div', { class: 'pwrap' },
+      h('button', { class: 'pcard', type: 'button', onclick: () => oeffneProjekt(pr.id), 'aria-label': pr.name + ': ' + a.length + (a.length === 1 ? ' Person' : ' Personen') },
+        projektSymbol(pr, 'big'),
+        h('div', { class: 'pc-t' }, h('strong', { text: pr.name }), h('span', { class: 'pc-s', text: a.length + (a.length === 1 ? ' Person' : ' Personen') })),
+        h('div', { class: 'pc-m' }, h('b', { text: eur(summe(ang)) }), h('small', { text: 'angekommen' })),
+        h('div', { class: 'pc-k', text: es + (es === 1 ? ' Mail' : ' Mails') + ' erstellt, ' + er + ' erhalten' })),
+      h('button', { class: 'pc-edit', type: 'button', 'aria-label': pr.name + ' bearbeiten', title: 'Bearbeiten', onclick: () => projektSheet(pr) }, ic('edit')));
   };
   const alle = h('button', { class: 'pcard alle', type: 'button', onclick: () => oeffneProjekt('alle'), 'aria-label': 'Alle Personen: ' + P.length },
-    h('span', { class: 'flag-ersatz' }, ic('people')),
+    h('span', { class: 'psym emoji big' }, ic('people')),
     h('div', { class: 'pc-t' }, h('strong', { text: 'Alle Personen' }), h('span', { class: 'pc-s', text: P.length + (P.length === 1 ? ' Person' : ' Personen') + ' in allen Projekten' })),
-    h('div', { class: 'pc-m' }, h('b', { text: eur(summe(P.filter(zaehltJetzt))) }), h('small', { text: 'angekommen' })),
+    h('div', { class: 'pc-m' }, h('b', { text: eur(summe(an)) }), h('small', { text: 'angekommen' })),
     h('div', { class: 'pc-k', text: 'Kein Name und keine Mail kommt doppelt vor' }));
-  const doppelt = [...aehnlichkeiten().values()].filter(l => l.some(x => x.art === 'exakt')).length;
-  const aehn = [...aehnlichkeiten().values()].filter(l => !l.some(x => x.art === 'exakt')).length;
+  const neuK = h('button', { class: 'pcard neu', type: 'button', onclick: () => projektSheet(null), 'aria-label': 'Projekt erstellen' },
+    h('span', { class: 'psym emoji big plus' }, ic('plus')),
+    h('div', { class: 'pc-t' }, h('strong', { text: 'Projekt erstellen' }), h('span', { class: 'pc-s', text: 'Name und Bild, in Sekunden' })));
+  const alleAehn = [...aehnlichkeiten().values()];
+  const doppelt = alleAehn.filter(l => l.some(x => x.art === 'exakt')).length, aehn = alleAehn.filter(l => !l.some(x => x.art === 'exakt')).length;
   app.append(
     h('header', { class: 'start-top' },
       h('div', { class: 'start-brand' }, logoImg(36), h('div', null, h('h1', { text: 'Adress-Tracker' }), h('div', { class: 'sub', id: 'sub' }))),
@@ -777,10 +856,89 @@ function startAufbau() {
         h('button', { class: 'ibtn', 'aria-label': 'Mehr', onclick: ev => hauptmenue(ev.currentTarget) }, ic('more')),
         h('button', { class: 'side-me compact', onclick: profilSheet, 'aria-label': 'Profil öffnen' }, avatar(S.me.name)))),
     h('main', { class: 'start' },
+      h('button', { class: 'gesamt', type: 'button', onclick: () => uebersichtSheet(), 'aria-label': 'Gewinn gemeinsam, Übersicht öffnen' },
+        h('div', { class: 'g-l', text: 'Gewinn gemeinsam, alle Projekte zusammen' }),
+        h('div', { class: 'g-n', text: eur(summe(an)) }),
+        h('div', { class: 'g-s', text: an.length + (an.length === 1 ? ' Person' : ' Personen') + ' angekommen' + (wartet.length ? ', ' + eur(summe(wartet)) + ' warten noch' : '') })),
       h('h2', { class: 'start-h', text: 'Projekte' }),
-      h('div', { class: 'pgrid' }, ...S.projekte.map(karte), alle),
-      (doppelt || aehn) ? h('p', { class: 'start-sum' }, doppelt ? doppelt + ' Personen haben einen doppelten Namen. ' : '', aehn ? aehn + ' Personen haben einen sehr ähnlichen Namen (blau markiert in der Liste).' : '') : null));
+      h('div', { class: 'pgrid' }, ...S.projekte.map(karte), alle, neuK),
+      (doppelt || aehn) ? h('p', { class: 'start-sum' }, doppelt ? doppelt + ' Personen haben einen doppelten Namen oder eine doppelte Mail. ' : '', aehn ? aehn + ' Personen haben einen sehr ähnlichen Namen oder eine sehr ähnliche Mail (blau markiert in der Liste).' : '') : null));
   setSub();
+}
+
+/* ---------- Projekt erstellen und bearbeiten */
+const EMOJIS = ['🌍', '🌎', '🌏', '🏠', '🏢', '💼', '⭐', '🔥', '💎', '🎯', '🚀', '💰', '🏦', '📈', '🛒', '🎰', '🃏', '🎲', '⚽', '🏀', '🏈', '⚾', '🎾', '🎮', '📱', '💻', '✉️', '📦', '🔑', '🛡️', '🍀', '🌟', '🌈', '☀️', '🌙', '⚡', '❄️', '🌴', '🏝️', '🏔️', '🗽', '🕌', '🎓', '🧠', '🤝', '👥'];
+async function bildQuadrat(file, px) {
+  const bmp = await createImageBitmap(file), s = Math.min(bmp.width, bmp.height);
+  const cv = document.createElement('canvas'); cv.width = cv.height = px;
+  const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, px, px);
+  cx.drawImage(bmp, (bmp.width - s) / 2, (bmp.height - s) / 2, s, s, 0, 0, px, px);
+  if (bmp.close) bmp.close();
+  for (const q of [0.85, 0.7, 0.55]) {
+    const b = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', q));
+    const d = 'data:image/jpeg;base64,' + await lesBase64(b);
+    if (d.length <= 38000) return d;
+  }
+  return null;
+}
+function projektSheet(pr) {
+  const neu = !pr;
+  let typ = neu ? 'emoji' : pr.symbol_typ, sym = neu ? '🌍' : pr.symbol;
+  const name = h('input', { id: 'pr-name', value: neu ? '' : pr.name, maxlength: 40, autocomplete: 'off', autocapitalize: 'words', placeholder: 'Name, zum Beispiel Österreich', 'aria-label': 'Projektname' });
+  const vor = h('div', { class: 'pr-vor' }), feld = h('div', { class: 'pr-feld' }), err = h('p', { class: 'err' });
+  const tabs = h('div', { class: 'segc3', role: 'tablist' });
+  const vorschau = () => { vor.textContent = ''; vor.append(sym ? projektSymbol({ symbol_typ: typ, symbol: sym }, 'big') : h('span', { class: 'psym emoji big', text: '?' })); };
+  const setTyp = t => {
+    if (t === typ) return; typ = t;
+    sym = t === 'flagge' ? (pr && pr.symbol_typ === 'flagge' ? pr.symbol : 'us') : t === 'emoji' ? (pr && pr.symbol_typ === 'emoji' ? pr.symbol : '🌍') : (pr && pr.symbol_typ === 'bild' ? pr.symbol : null);
+    zeige();
+  };
+  function zeige() {
+    tabs.textContent = '';
+    [['flagge', 'Flagge'], ['emoji', 'Emoji'], ['bild', 'Foto']].forEach(([k, l]) => tabs.append(h('button', { class: 'seg', type: 'button', role: 'tab', 'aria-pressed': String(typ === k), text: l, onclick: () => setTyp(k) })));
+    feld.textContent = '';
+    if (typ === 'flagge') {
+      feld.append(h('div', { class: 'pg' }, ...Object.entries(FLAGGEN).map(([c, f]) => h('button', { class: 'pg-b', type: 'button', 'aria-pressed': String(sym === c), title: f.n, 'aria-label': f.n, onclick: () => { sym = c; zeige(); } }, flagge(c, 'mini2')))));
+    } else if (typ === 'emoji') {
+      const eigen = h('input', { class: 'pr-eigen', maxlength: 12, autocomplete: 'off', placeholder: 'Eigenes Emoji einfügen oder tippen', 'aria-label': 'Eigenes Emoji', oninput: e => { const v = e.target.value.trim(); if (v && !/[A-Za-z0-9<>&"']/.test(v) && [...v].length <= 8) { sym = v; vorschau(); feld.querySelectorAll('.pg-b').forEach(b => b.setAttribute('aria-pressed', 'false')); } } });
+      feld.append(h('div', { class: 'pg emojis' }, ...EMOJIS.map(e => h('button', { class: 'pg-b', type: 'button', 'aria-pressed': String(sym === e), 'aria-label': e, text: e, onclick: () => { sym = e; zeige(); } }))), eigen);
+    } else {
+      const datei = h('input', { type: 'file', accept: 'image/*', hidden: true, 'aria-label': 'Foto auswählen' });
+      datei.addEventListener('change', async () => {
+        const f = datei.files[0]; datei.value = ''; if (!f) return; err.textContent = '';
+        try { const d = await bildQuadrat(f, 96); if (!d) throw new Error('bild_zu_gross'); sym = d; vorschau(); zeige(); }
+        catch (e) { err.textContent = 'Das Foto konnte nicht gelesen werden. Bitte ein anderes nehmen.'; }
+      });
+      feld.append(h('button', { class: 'btn', type: 'button', text: sym ? 'Anderes Foto wählen' : 'Foto wählen', onclick: () => datei.click() }), datei, h('p', { class: 'hint', text: 'Das Foto wird auf ein kleines Quadrat zugeschnitten.' }));
+    }
+    vorschau();
+  }
+  const sichern = h('button', { class: 'tbtn strong', type: 'button', text: neu ? 'Erstellen' : 'Sichern' });
+  const fuss = h('button', { class: 'btn pri big', type: 'button', text: neu ? 'Projekt erstellen' : 'Sichern', onclick: () => sichern.click() });
+  sichern.addEventListener('click', async () => {
+    err.textContent = '';
+    const n = name.value.trim();
+    if (!n) { err.textContent = 'Bitte einen Namen eintragen.'; name.focus(); return; }
+    if (!sym) { err.textContent = 'Bitte ein Bild wählen: Flagge, Emoji oder Foto.'; return; }
+    sichern.disabled = true; fuss.disabled = true;
+    try {
+      const r = await rpc('tr_projekt_speichern', { p_code: S.code, p_id: neu ? null : pr.id, p_name: n, p_typ: typ, p_symbol: sym });
+      const i = S.projekte.findIndex(x => x.id === r.id); if (i >= 0) S.projekte[i] = r; else S.projekte.push(r);
+      sh.__close(); if (S.ansicht === 'start') startAufbau(); else zeichne(); toast(neu ? 'Projekt erstellt' : 'Gespeichert'); laden(false);
+    } catch (e) { err.textContent = fehlertext(e); sichern.disabled = false; fuss.disabled = false; }
+  });
+  name.addEventListener('keydown', e => { if (e.key === 'Enter') sichern.click(); });
+  let armed = false;
+  const anz = neu ? 0 : S.personen.filter(p => p.projekt_id === pr.id).length;
+  const del = !neu && istAdmin() ? h('div', null, h('div', { class: 'fg' }, h('button', { class: 'btn red', type: 'button', disabled: anz > 0 || S.projekte.length <= 1, text: 'Projekt löschen', onclick: async ev => {
+    if (!armed) { armed = true; ev.target.classList.add('armed'); ev.target.textContent = 'Wirklich löschen? Nochmal tippen'; return; }
+    ev.target.disabled = true;
+    try { await rpc('tr_projekt_loeschen', { p_code: S.code, p_id: pr.id }); S.projekte = S.projekte.filter(x => x.id !== pr.id); if (S.f.projekt === pr.id) S.f.projekt = 'alle'; sh.__close(); startAufbau(); toast('Projekt gelöscht'); }
+    catch (e) { err.textContent = fehlertext(e); ev.target.disabled = false; }
+  } })), anz > 0 ? h('p', { class: 'hint', text: 'Gelöscht werden kann nur ein leeres Projekt. Verschiebe zuerst die ' + anz + (anz === 1 ? ' Person' : ' Personen') + ' in ein anderes Projekt.' }) : null) : null;
+  const body = h('div', { class: 'sheet-b' }, vor, h('div', { class: 'fg' }, frow('Name', name)), tabs, feld, err, del);
+  const sh = sheetEl(neu ? 'Neues Projekt' : 'Projekt', body, { left: h('button', { class: 'tbtn', type: 'button', text: 'Abbrechen', onclick: () => sh.__close() }), right: sichern, foot: fuss });
+  zeige(); oeffne(sh, false); name.focus();
 }
 
 /* ---------- Dateien an einer Person (Klicken oder Reinziehen) */
@@ -920,8 +1078,9 @@ function einstellungenBlock(err) {
     h('p', { class: 'hint', text: 'Der Wert zählt nur, wenn bei der Person "Dazurechnen" an ist und ihre Stufe mindestens die gewählte erreicht hat. Bei jeder Person lässt sich ein eigener Wert eintragen, sonst gilt der Standard.' }),
   ];
 }
-function uebersichtSheet() {
-  const P = S.personen;
+function uebersichtSheet(pid) {
+  pid = typeof pid === 'string' ? pid : 'alle';
+  const Pall = S.personen, P = pid === 'alle' ? Pall : Pall.filter(p => p.projekt_id === pid), pr0 = pid === 'alle' ? null : projektVon(pid);
   const jetzt = P.filter(zaehltJetzt), wartet = P.filter(p => p.zaehlt && !stufeReicht(p)), nein = P.filter(p => !p.zaehlt);
   const abL = (ZAEHLT_AB.find(([k]) => k === S.einst.zaehlt_ab) || ZAEHLT_AB[0])[1];
   const karte = (kl, titel, zahl, sub, extra) => h('div', { class: 'ue-card ' + kl }, h('div', { class: 'ue-l', text: titel }), h('div', { class: 'ue-n', text: zahl }), h('div', { class: 'ue-s', text: sub }), extra || null);
@@ -935,19 +1094,23 @@ function uebersichtSheet() {
   const tp = h('table', { class: 'pv' }, h('thead', null, h('tr', null, ...['Projekt', 'Personen', 'Dazu', 'Angekommen'].map(t => h('th', { text: t })))));
   const bp = h('tbody');
   S.projekte.forEach(x => {
-    const a = P.filter(p => p.projekt_id === x.id), an = a.filter(zaehltJetzt);
-    bp.append(h('tr', null, h('td', null, flagge(x.flagge, 'mini'), ' ' + x.name), h('td', { text: a.length }), h('td', { text: a.filter(p => p.zaehlt).length }), h('td', { text: an.length ? eur(summe(an)) + ' (' + an.length + ')' : '–' })));
+    const a = Pall.filter(p => p.projekt_id === x.id), an = a.filter(zaehltJetzt);
+    bp.append(h('tr', null, h('td', null, projektSymbol(x, 'mini'), ' ' + x.name), h('td', { text: a.length }), h('td', { text: a.filter(p => p.zaehlt).length }), h('td', { text: an.length ? eur(summe(an)) + ' (' + an.length + ')' : '–' })));
   });
+  { const gan = Pall.filter(zaehltJetzt); bp.append(h('tr', { class: 'tot' }, h('td', { text: 'Gemeinsam' }), h('td', { text: Pall.length }), h('td', { text: Pall.filter(p => p.zaehlt).length }), h('td', { text: eur(summe(gan)) + ' (' + gan.length + ')' }))); }
   tp.append(bp);
+  const sel = h('select', { id: 'ue-projekt', 'aria-label': 'Projekt auswerten', onchange: e => { sh.__close(); uebersichtSheet(e.target.value); } }, h('option', { value: 'alle', text: 'Alle Projekte gemeinsam' }), ...S.projekte.map(x => h('option', { value: x.id, text: x.name }))); sel.value = pid;
   const sh = sheetEl('Übersicht und Wert', h('div', { class: 'sheet-b' },
+    h('div', { class: 'fg' }, frow('Auswerten', sel)),
+    pr0 ? h('p', { class: 'hint', text: 'Gewinn gemeinsam, alle Projekte zusammen: ' + eur(summe(Pall.filter(zaehltJetzt))) + '. Die Projekte zählen einzeln, der Gewinn ist gemeinsam.' }) : null,
     h('div', { class: 'ue-grid' },
-      karte('main', 'Angekommen', eur(summe(jetzt)), jetzt.length + (jetzt.length === 1 ? ' Person' : ' Personen')),
+      karte('main', pr0 ? 'Angekommen in ' + pr0.name : 'Gewinn gemeinsam, angekommen', eur(summe(jetzt)), jetzt.length + (jetzt.length === 1 ? ' Person' : ' Personen')),
       karte('', 'Angehakt, wartet noch', eur(summe(wartet)), wartet.length + (wartet.length === 1 ? ' Person' : ' Personen') + ', zählt ab ' + abL),
       karte('', 'Nicht dazugerechnet', String(nein.length), nein.length === 1 ? 'Person bekommt keinen Wert' : 'Personen bekommen keinen Wert')),
     h('div', { class: 'fg table-wrap' }, tb),
     h('div', { class: 'fg table-wrap' }, tp),
     h('p', { class: 'hint', text: 'Dateispeicher: ' + (((S.einst.dateien_bytes || 0) / 1048576).toFixed(1).replace('.', ',')) + ' MB von 300 MB' + ((S.einst.dateien_bytes || 0) > 0.8 * 314572800 ? ' (fast voll, bitte alte Dateien löschen)' : '') }),
-    h('p', { class: 'hint', text: 'Standardwert ' + eur(S.einst.standardwert) + ' je Person, zählt ab Stufe "' + abL + '", und nur bei Personen mit "Dazurechnen". ' + P.length + (P.length === 1 ? ' Person' : ' Personen') + ' insgesamt.' }),
+    h('p', { class: 'hint', text: 'Standardwert ' + eur(S.einst.standardwert) + ' je Person, zählt ab Stufe "' + abL + '", und nur bei Personen mit "Dazurechnen". ' + Pall.length + (Pall.length === 1 ? ' Person' : ' Personen') + ' insgesamt.' }),
     h('button', { class: 'btn', text: 'Einstellungen ändern', onclick: () => { sh.__close(); profilSheet(); } })),
   { right: h('button', { class: 'tbtn strong', text: 'Fertig', onclick: () => sh.__close() }), wide: true });
   oeffne(sh, true);
@@ -1063,7 +1226,7 @@ function profilSheet() {
 }
 
 /* ---------- Zugaenge und Protokoll (Admin) */
-const AKTION = { neu: 'Person angelegt', aendern: 'Person geändert', loeschen: 'Person gelöscht', import: 'Liste eingespielt', einrichten: 'Einrichtung', zugang_neu: 'Zugang angelegt', zugang_gesperrt: 'Zugang gesperrt', zugang_entsperrt: 'Zugang entsperrt', zugang_neuer_code: 'Neuer Schlüssel', zugang_admin: 'Zum Admin gemacht', zugang_mitarbeiter: 'Zum Mitarbeiter gemacht', profil: 'Name geändert', zugang_umbenannt: 'Zugang umbenannt', einstellung: 'Einstellung geändert', datei_neu: 'Datei hinzugefügt', datei_weg: 'Datei gelöscht' };
+const AKTION = { neu: 'Person angelegt', aendern: 'Person geändert', loeschen: 'Person gelöscht', import: 'Liste eingespielt', einrichten: 'Einrichtung', zugang_neu: 'Zugang angelegt', zugang_gesperrt: 'Zugang gesperrt', zugang_entsperrt: 'Zugang entsperrt', zugang_neuer_code: 'Neuer Schlüssel', zugang_admin: 'Zum Admin gemacht', zugang_mitarbeiter: 'Zum Mitarbeiter gemacht', profil: 'Name geändert', zugang_umbenannt: 'Zugang umbenannt', einstellung: 'Einstellung geändert', datei_neu: 'Datei hinzugefügt', datei_weg: 'Datei gelöscht', projekt_neu: 'Projekt angelegt', projekt_aendern: 'Projekt geändert', projekt_weg: 'Projekt gelöscht' };
 function zugaengeSheet() {
   const body = h('div', { class: 'sheet-b' });
   let tab = 'zugang';
