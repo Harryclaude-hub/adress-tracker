@@ -183,7 +183,7 @@ const FEHLER = {
   zu_viele_projekte: 'Mehr als 30 Projekte gehen nicht.',
   name_doppelt: 'Diesen Namen gibt es schon (in irgendeinem Projekt). Kein Name darf doppelt vorkommen.',
   mail_doppelt: 'Diese E-Mail gibt es schon (in irgendeinem Projekt). Keine Mail darf doppelt vorkommen.',
-  stake_gesperrt: 'Bet Online ist bei dieser Person schon gesetzt, deshalb geht Stake nicht mehr.',
+  stake_gesperrt: 'Bei einer erhaltenen Mail geht Stake nicht mehr, wenn Bet Online schon gesetzt ist.',
   projekt_ungueltig: 'Dieses Projekt gibt es nicht.',
   mail_status_ungueltig: 'Der Mail-Status ist ungültig.',
   konto_ungueltig: 'Die Konto-Angabe ist ungültig.',
@@ -443,7 +443,7 @@ function zeichne() {
       h('button', { class: 'btn', text: 'Filter zurücksetzen', onclick: () => { S.f = { status: 'alle', q: '', state: 'alle', haken: 'alle', projekt: S.f.projekt, mail: 'alle', konto: 'alle', sort: S.f.sort }; $('#q').value = ''; zeichne(); } }))));
     return;
   }
-  const grp = h('div', { class: 'group' }, h('div', { class: 'colhead' }, h('span'), h('span', { text: 'Person' }), h('span', { text: 'State' }), h('span', { text: 'Stufe' }), h('span', { text: 'Zuletzt' })));
+  const grp = h('div', { class: 'group' }, h('div', { class: 'colhead' }, h('span'), h('span', { text: 'Person' }), h('span', { text: 'State' }), h('span', { text: 'Konten' }), h('span', { text: 'Stufe' }), h('span', { text: 'Zuletzt' })));
   rows.forEach(p => grp.append(zeile(p)));
   box.append(grp, h('div', { class: 'foot', text: rows.length + ' von ' + inP.length + ' angezeigt, ' + inP.filter(p => p.zaehlt).length + ' dazugerechnet' }));
 }
@@ -460,14 +460,14 @@ function zeile(p) {
   const sub = h('div', { class: 'subline' },
     tv.k === 'nummer' ? null : p.nummer ? h('span', { class: 'ph', text: p.nummer }) : h('span', { class: 'none', text: 'Nummer fehlt' }),
     tv.k === 'email' ? null : p.email ? h('span', { text: p.email }) : h('span', { class: 'none', text: 'E-Mail fehlt' }),
-    p.mail_status ? h('span', { class: 'ms-pill ' + p.mail_status, text: p.mail_status === 'erhalten' ? 'Mail erhalten' : 'Mail erstellt' }) : null,
     p.adresse && tv.k !== 'adresse' ? h('span', { text: p.adresse }) : null,
     p.zustaendig ? h('span', { text: 'Zuständig: ' + p.zustaendig }) : null);
   const subm = h('div', { class: 'sub-m', text: [p.state ? p.state + (STATES[p.state] ? ' · ' + STATES[p.state] : '') : 'Ohne State'].join(' · ') });
   return h('div', { class: 'row', 'data-id': p.id },
     h('label', { class: 'cb' }, h('input', { class: 'cbx', type: 'checkbox', checked: !!p.zaehlt, 'aria-label': 'Dazurechnen: ' + tv.t, title: 'Dazurechnen', onchange: e => quick(p.id, { zaehlt: e.target.checked }) })),
-    h('div', { class: 'c-main' }, h('div', { class: 'nmline' }, S.f.projekt === 'alle' ? projektSymbol(projektVon(p.projekt_id), 'mini') : null, h('button', { class: 'nm', text: tv.t, onclick: () => personSheet(p.id) }), p.adressnummer ? h('span', { class: 'nr', title: 'Adressnummer', text: 'Nr. ' + p.adressnummer }) : null, p.dateien ? h('span', { class: 'nr', title: 'Dateien', text: p.dateien + (p.dateien === 1 ? ' Datei' : ' Dateien') }) : null, p.betonline ? h('span', { class: 'kt bo', text: 'Bet Online' }) : null, p.stake ? h('span', { class: 'kt st', text: 'Stake' }) : null, aehnTag(p)), sub, subm),
+    h('div', { class: 'c-main' }, h('div', { class: 'nmline' }, S.f.projekt === 'alle' ? projektSymbol(projektVon(p.projekt_id), 'mini') : null, h('button', { class: 'nm', text: tv.t, onclick: () => personSheet(p.id) }), p.adressnummer ? h('span', { class: 'nr', title: 'Adressnummer', text: 'Nr. ' + p.adressnummer }) : null, p.dateien ? h('span', { class: 'nr', title: 'Dateien', text: p.dateien + (p.dateien === 1 ? ' Datei' : ' Dateien') }) : null, aehnTag(p)), sub, subm, h('div', { class: 'konten-m' }, ...kontenZeile(p))),
     p.state ? h('div', { class: 'c-state', title: STATES[p.state] || p.state, text: p.state }) : h('div', { class: 'c-state leer', text: 'ohne' }),
+    h('div', { class: 'c-konten' }, ...kontenZeile(p, true)),
     h('div', { class: 'c-status' }, stsel),
     h('div', { class: 'c-last' }, rel(p.geaendert), h('br'), p.geaendert_von ? 'von ' + p.geaendert_von : ''));
 }
@@ -584,21 +584,26 @@ function personSheet(id) {
   const nummer = h('input', { id: 'd-nummer', value: p.nummer || '', inputmode: 'tel', autocomplete: 'off', maxlength: 60, placeholder: 'noch offen' });
   const email = h('input', { id: 'd-email', value: p.email || '', inputmode: 'email', autocomplete: 'off', autocapitalize: 'off', maxlength: 254, placeholder: 'noch offen' });
   const projSel = h('select', { id: 'd-projekt', 'aria-label': 'Projekt' }, ...S.projekte.map(x => h('option', { value: x.id, text: x.name }))); projSel.value = p.projekt_id;
-  const mailSel = h('select', { id: 'd-mailstatus', class: 'msel', 'aria-label': 'Mail-Status' }, h('option', { value: '', text: 'Mail-Status' }), h('option', { value: 'erhalten', text: 'Erhalten' }), h('option', { value: 'erstellt', text: 'Erstellt' })); mailSel.value = p.mail_status || '';
-  const syncMail = () => { mailSel.disabled = !email.value.trim(); if (mailSel.disabled) mailSel.value = ''; }; syncMail(); email.addEventListener('input', syncMail);
-  /* Konten: Bet Online zuerst sperrt Stake. Stake zuerst erlaubt Bet Online danach. */
+  /* Mail-Status: zwei Knoepfe mit zwei Farben, einer von beiden muss es sein. */
+  let mailWahl = p.mail_status || '';
+  const erBtn = h('button', { class: 'mbtn er', type: 'button', text: 'Erhalten', 'aria-label': 'Mail erhalten' }), esBtn = h('button', { class: 'mbtn es', type: 'button', text: 'Erstellt', 'aria-label': 'Mail selbst erstellt' });
+  const mailZeigen = () => {
+    erBtn.setAttribute('aria-pressed', String(mailWahl === 'erhalten')); esBtn.setAttribute('aria-pressed', String(mailWahl === 'erstellt'));
+    const aus = !email.value.trim(); erBtn.disabled = aus; esBtn.disabled = aus;
+  };
+  /* Konten: Bei Mail erstellt gehen Stake und Bet Online in jeder Reihenfolge. Bei Mail erhalten fragt die Seite bei Stake nach,
+     und ist Bet Online gesetzt, geht Stake nicht mehr. */
   const origBet = !!p.betonline, origStake = !!p.stake; let bet = origBet, stk = origStake;
-  const betBtn = h('button', { class: 'kbtn bo', type: 'button', text: 'Bet Online' }), stakeBtn = h('button', { class: 'kbtn st', type: 'button', text: 'Stake' });
+  const betBtn = h('button', { class: 'kbtn bo', type: 'button' }, kontoLogo('bo'), 'Bet Online'), stakeBtn = h('button', { class: 'kbtn st', type: 'button' }, kontoLogo('st'), 'Stake');
   const kHint = h('div', { class: 'khint' }), kWarn = h('div', { class: 'warn info', hidden: true, role: 'alert' });
   let stakeOk = origStake && (p.mail_status || '') === 'erhalten';
   const kontenZeigen = () => {
     betBtn.setAttribute('aria-pressed', String(bet)); stakeBtn.setAttribute('aria-pressed', String(stk));
-    stakeBtn.disabled = !stk && (bet || (origBet && !origStake));
-    const ms = mailSel.value;
+    const erh = mailWahl === 'erhalten';
+    stakeBtn.disabled = erh && !stk && !origStake && (bet || origBet);
     kHint.textContent = '';
-    kHint.append(
-      ms === 'erhalten' ? h('p', { class: 'hint', text: 'Erhaltene Mail: Hier ist nur Bet Online vorgesehen. Bei Stake fragt die Seite nach.' }) : ms === 'erstellt' ? h('p', { class: 'hint', text: 'Selbst erstellte Mail: Stake und Bet Online sind möglich.' }) : null,
-      h('p', { class: 'hint', text: stakeBtn.disabled ? 'Bet Online ist gesetzt, deshalb geht Stake bei dieser Person nicht mehr.' : 'Zuerst Stake, danach Bet Online geht. Zuerst Bet Online, danach Stake geht nicht.' }));
+    kHint.append(erh ? h('p', { class: 'hint', text: stakeBtn.disabled ? 'Erhaltene Mail mit Bet Online: Stake geht hier nicht mehr.' : 'Erhaltene Mail: Hier ist nur Bet Online vorgesehen. Bei Stake fragt die Seite nach. Ist Bet Online gesetzt, geht Stake nicht mehr.' })
+      : mailWahl === 'erstellt' ? h('p', { class: 'hint', text: 'Selbst erstellte Mail: Stake und Bet Online gehen in jeder Reihenfolge.' }) : null);
   };
   const stakeFrage = () => {
     kWarn.textContent = ''; kWarn.hidden = false;
@@ -610,9 +615,11 @@ function personSheet(id) {
     kWarn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   };
   betBtn.addEventListener('click', () => { bet = !bet; kontenZeigen(); });
-  stakeBtn.addEventListener('click', () => { if (stakeBtn.disabled) return; if (!stk && mailSel.value === 'erhalten' && !stakeOk) { stakeFrage(); return; } stk = !stk; kontenZeigen(); });
-  mailSel.addEventListener('change', kontenZeigen);
-  kontenZeigen();
+  stakeBtn.addEventListener('click', () => { if (stakeBtn.disabled) return; if (!stk && mailWahl === 'erhalten' && !stakeOk) { stakeFrage(); return; } stk = !stk; kontenZeigen(); });
+  erBtn.addEventListener('click', () => { mailWahl = 'erhalten'; mailZeigen(); kontenZeigen(); });
+  esBtn.addEventListener('click', () => { mailWahl = 'erstellt'; mailZeigen(); kontenZeigen(); });
+  email.addEventListener('input', () => { if (!email.value.trim()) mailWahl = ''; mailZeigen(); kontenZeigen(); });
+  mailZeigen(); kontenZeigen();
   const wert = h('input', { id: 'd-wert', value: p.wert == null ? '' : String(p.wert).replace('.', ','), inputmode: 'decimal', autocomplete: 'off', maxlength: 10, placeholder: 'Standard ' + eur(S.einst.standardwert) });
   const adresse = h('textarea', { id: 'd-adresse', maxlength: 500, placeholder: 'Zugeteilte Adresse', rows: 2 }); adresse.value = p.adresse || '';
   const zust = h('input', { id: 'd-zust', value: p.zustaendig || '', autocomplete: 'off', maxlength: 100, placeholder: 'optional' });
@@ -679,16 +686,18 @@ function personSheet(id) {
     err.textContent = '';
     const nm = name.value.trim();
     if (![nm, anr.value, st.value, nummer.value, email.value, adresse.value, zust.value, notiz.value].some(v => v && v.trim())) { err.textContent = 'Bitte mindestens ein Feld ausfüllen.'; name.focus(); return; }
+    if (email.value.trim() && !mailWahl && (neu || email.value.trim() !== (p.email || ''))) { err.textContent = 'Bitte den Mail-Status wählen: Erhalten oder Erstellt.'; erBtn.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
+    if (mailWahl === 'erhalten' && stk && !origStake && origBet) { err.textContent = FEHLER.stake_gesperrt; return; }
     const wz = wert.value.trim() === '' ? null : parseEuro(wert.value);
     if (Number.isNaN(wz)) { err.textContent = 'Bitte beim Wert eine Zahl eintragen, zum Beispiel 40 oder 35,50.'; wert.focus(); return; }
     const list = treffer();
     if (list.some(t => t.hart)) { zeigeWarnung(list, true); bestaetigt = false; warnBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
-    if (mailSel.value === 'erhalten' && stk && !stakeOk) { stakeFrage(); return; }
+    if (mailWahl === 'erhalten' && stk && !stakeOk) { stakeFrage(); return; }
     if (list.length && !bestaetigt) {
       zeigeWarnung(list, false); bestaetigt = true; setLabel('Trotzdem sichern', true);
       warnBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return;
     }
-    const neuF = { name: nm, adressnummer: anr.value.trim(), state: st.value || null, nummer: nummer.value.trim(), email: email.value.trim(), adresse: adresse.value.trim(), status: status.value, zaehlt: haken.checked, wert: wz, projekt: projSel.value, mail_status: mailSel.value || null, betonline: bet, stake: stk, zustaendig: zust.value.trim(), notiz: notiz.value.trim() };
+    const neuF = { name: nm, adressnummer: anr.value.trim(), state: st.value || null, nummer: nummer.value.trim(), email: email.value.trim(), adresse: adresse.value.trim(), status: status.value, zaehlt: haken.checked, wert: wz, projekt: projSel.value, mail_status: mailWahl || null, betonline: bet, stake: stk, zustaendig: zust.value.trim(), notiz: notiz.value.trim() };
     let felder = {};
     if (neu) { for (const [k, v] of Object.entries(neuF)) if (v !== '' && v !== null && !(['zaehlt', 'betonline', 'stake'].includes(k) && v === false) && !(k === 'status' && v === 'leer')) felder[k] = v; }
     else {
@@ -718,7 +727,7 @@ function personSheet(id) {
     warnBox,
     h('div', { class: 'fg' }, frow('Projekt', projSel), frow('Name', name), soft, frow('Adressnr.', anr), frow('State', st)),
     h('div', { class: 'fg' }, frow('Stufe', status), frow('Wert (€)', wert), h('label', { class: 'fr sw-row' }, h('span', { class: 'fl', text: 'Dazurechnen' }), haken)),
-    h('div', { class: 'fg' }, frow('Nummer', nummer, cp(() => nummer.value)), frow('E-Mail', email, h('span', { class: 'xtra' }, mailSel, cp(() => email.value))), frow('Adresse', adresse, cp(() => adresse.value), true)),
+    h('div', { class: 'fg' }, frow('Nummer', nummer, cp(() => nummer.value)), frow('E-Mail', email, cp(() => email.value)), h('div', { class: 'fr ms' }, h('span', { class: 'fl', text: 'Mail-Status' }), h('div', { class: 'mbtns' }, erBtn, esBtn)), frow('Adresse', adresse, cp(() => adresse.value), true)),
     h('div', null, h('div', { class: 'fg' }, h('div', { class: 'fr konto' }, h('span', { class: 'fl', text: 'Konten' }), h('div', { class: 'kbtns' }, betBtn, stakeBtn))), kWarn, kHint),
     h('div', { class: 'fg' }, frow('Zuständig', zust), frow('Notiz', notiz, null, true)),
     h('div', null, h('div', { class: 'fg-t', text: 'Dateien und Fotos' }), bereich.el),
@@ -777,6 +786,23 @@ function projektSymbol(pr, groesse) {
   if (t === 'emoji') return h('span', { class: 'psym emoji ' + (groesse || ''), 'aria-hidden': 'true', text: sym });
   if (t === 'bild' && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(sym)) return h('img', { class: 'psym bild ' + (groesse || ''), src: sym, alt: '' });
   return flagge(sym, groesse);
+}
+/* Platzhalter-Logos fuer Bet Online und Stake (eigene kleine Zeichen, bis echte Logo-Dateien da sind). */
+function kontoLogo(art) {
+  const st = art === 'st';
+  const sv = svgEl('svg', { viewBox: '0 0 24 24', class: 'klogo ' + art, 'aria-hidden': 'true' });
+  sv.append(svgEl('rect', { width: 24, height: 24, rx: 6, fill: st ? '#1db954' : '#e8590c' }));
+  const t = svgEl('text', { x: 12, y: st ? 17.5 : 16, 'text-anchor': 'middle', 'font-size': st ? 16 : 11.5, 'font-weight': 800, fill: '#fff', 'font-family': 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif' });
+  t.textContent = st ? 'S' : 'BO'; sv.append(t); return sv;
+}
+/* Vorschau in der Liste: Mail-Status (zwei Farben) und die Logos der Konten */
+function kontenZeile(p, leer) {
+  const out = [];
+  if (p.mail_status) out.push(h('span', { class: 'ms-pill ' + p.mail_status, text: p.mail_status === 'erhalten' ? 'Erhalten' : 'Erstellt' }));
+  if (p.betonline) out.push(h('span', { class: 'kbadge', title: 'Bet Online', 'aria-label': 'Bet Online' }, kontoLogo('bo')));
+  if (p.stake) out.push(h('span', { class: 'kbadge', title: 'Stake', 'aria-label': 'Stake' }, kontoLogo('st')));
+  if (!out.length && leer) out.push(h('span', { class: 'none', text: '–' }));
+  return out;
 }
 const projektVon = id => S.projekte.find(x => x.id === id) || { id, name: String(id || '?'), symbol_typ: 'flagge', symbol: '' };
 const projektTitel = id => projektVon(id).name;
