@@ -5,6 +5,7 @@ Erledigt, Uebernommen, Test), Dateien und Fotos je Person, ein Wert in Euro je P
 Uebersicht, was schon angekommen ist. Startbildschirm mit Projekten (USA, Bangladesch, Finnland, weitere selbst anlegen mit Flagge, Emoji oder Foto), der Gewinn ist ueber alle
 Projekte gemeinsam. Kein Name und keine Mail darf in der ganzen Datenbank doppelt
 vorkommen, aehnliche Namen werden blau gezeigt. Mail-Status (erhalten, erstellt) und Konten (Bet Online, Stake).
+Alles Geldtechnische (Wert, Gewinn, Uebersicht, PDF-Export) sieht nur ein Admin, ein Mitarbeiter sieht nur Personen und Konten.
 Eine Seite (`index.html`), keine Build-Schritte, Daten in einem eigenen Supabase-Projekt.
 
 Dieses Repo enthaelt nur Code und Migrationen, keine Daten.

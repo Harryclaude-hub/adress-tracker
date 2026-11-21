@@ -54,24 +54,6 @@ function rel(ts) {
   if (s < 86400 * 14) return 'vor ' + Math.floor(s / 86400) + ' Tagen';
   return new Date(ts).toLocaleDateString('de-DE');
 }
-function normState(s) {
-  if (s == null) return null;
-  const t = String(s).trim(); if (!t) return null;
-  const up = t.toUpperCase(); if (STATES[up]) return up;
-  const low = t.toLowerCase();
-  for (const [k, v] of Object.entries(STATES)) if (v.toLowerCase() === low) return k;
-  return t;
-}
-function normStatus(s) {
-  const t = String(s || '').trim().toLowerCase();
-  if (!t) return null;
-  if (['erledigt', 'gruen', 'grün', 'green', 'fertig', 'done'].includes(t)) return 'erledigt';
-  if (['zu erledigen', 'zu_erledigen', 'offen', 'open', 'in arbeit', 'in_arbeit', 'problem'].includes(t)) return 'zu_erledigen';
-  if (['übernommen', 'uebernommen', 'veraltet', 'alt', 'outdated', 'old'].includes(t)) return 'veraltet';
-  if (['test', 'testen', 'probe'].includes(t)) return 'test';
-  if (['leer', 'kein auftrag', 'leer, kein auftrag', 'blank', 'neu', 'new'].includes(t)) return 'leer';
-  return null;
-}
 /* Wert je Person: Standardwert, wenn nichts eingetragen. Zaehlt nur, wenn "Dazurechnen" an ist UND die Stufe ab der eingestellten erreicht ist. */
 const RANG = { zu_erledigen: 1, erledigt: 2, veraltet: 3 };
 const ZAEHLT_AB = [['veraltet', 'Übernommen'], ['erledigt', 'Erledigt'], ['zu_erledigen', 'Zu erledigen']];
@@ -278,7 +260,7 @@ async function laden(first) {
     const sig = JSON.stringify(r.personen), esig = JSON.stringify(r.einstellungen || null);
     const changed = sig !== S.sig || esig !== S.esig;
     S.personen = r.personen; S.sig = sig; S.esig = esig;
-    if (r.einstellungen) S.einst = r.einstellungen;
+    if (r.einstellungen) S.einst = { ...S.einst, ...r.einstellungen };
     if (r.projekte) S.projekte = r.projekte;
     if (first || (S.ansicht === 'liste' && !$('#rows')) || (S.ansicht === 'start' && !$('.start'))) aufbau();
     else if (S.ansicht === 'start') { setSub(); if (changed) startAufbau(); }
@@ -314,12 +296,12 @@ function aufbau() {
     h('div', { class: 'side-brand' }, logoImg(30), h('span', { class: 'side-title', text: 'Adress-Tracker' })),
     h('div', { class: 'side-scroll' },
       h('button', { class: 'nav-item', onclick: zumStart }, ic('back'), h('span', { class: 'nl', text: 'Alle Projekte' })),
-      h('button', { class: 'nav-item', onclick: uebersichtSheet }, ic('sum'), h('span', { class: 'nl', text: 'Übersicht und Wert' })),
+      istAdmin() ? h('button', { class: 'nav-item', onclick: uebersichtSheet }, ic('sum'), h('span', { class: 'nl', text: 'Übersicht und Wert' })) : null,
       h('div', { class: 'side-label', text: 'Land' }), h('div', { id: 'sideLand' }),
       h('div', { class: 'side-label', text: 'Stufe' }), h('div', { id: 'sideStatus' }),
       h('div', { class: 'side-label', text: 'Mail' }), h('div', { id: 'sideMail' }),
       h('div', { class: 'side-label', text: 'Konto' }), h('div', { id: 'sideKonto' }),
-      h('div', { class: 'side-label', text: 'Dazurechnen' }), h('div', { id: 'sideHaken' }),
+      ...(istAdmin() ? [h('div', { class: 'side-label', text: 'Dazurechnen' }), h('div', { id: 'sideHaken' })] : []),
       h('div', { class: 'side-label', text: 'State' }), h('div', { id: 'sideStates' })),
     h('button', { class: 'side-me', onclick: profilSheet, 'aria-label': 'Profil öffnen' }, avatar(S.me.name),
       h('span', { class: 'me-t' }, h('strong', { text: S.me.name }), h('small', { text: istAdmin() ? 'Admin' : 'Mitarbeiter' })), ic('chevron')));
@@ -346,8 +328,7 @@ function aufbau() {
 }
 function hauptmenue(anchor) {
   const items = [];
-  items.push({ label: 'Übersicht und Wert', icon: 'sum', fn: uebersichtSheet });
-  if (istAdmin()) items.push({ label: 'Liste einfügen', icon: 'list', fn: importSheet }, { label: 'CSV laden', icon: 'down', fn: exportCsv }, { label: 'Zugänge', icon: 'people', fn: zugaengeSheet }, '-');
+  if (istAdmin()) items.push({ label: 'Übersicht und Wert', icon: 'sum', fn: uebersichtSheet }, { label: 'PDF laden', icon: 'down', fn: pdfSheet }, { label: 'Zugänge', icon: 'people', fn: zugaengeSheet }, '-');
   items.push({ label: 'Profil', icon: 'person', fn: profilSheet });
   popMenu(anchor, items);
 }
@@ -357,8 +338,8 @@ function passtOhneStatus(p) {
   const f = S.f;
   if (f.projekt !== 'alle' && p.projekt_id !== f.projekt) return false;
   if (!mailPasst(p, f.mail) || !kontoPasst(p, f.konto)) return false;
-  if (f.haken === 'offen' && p.zaehlt) return false;
-  if (f.haken === 'ja' && !p.zaehlt) return false;
+  if (istAdmin() && f.haken === 'offen' && p.zaehlt) return false;
+  if (istAdmin() && f.haken === 'ja' && !p.zaehlt) return false;
   if (f.state === 'ohne' && p.state) return false;
   if (f.state !== 'alle' && f.state !== 'ohne' && p.state !== f.state) return false;
   const q = f.q.trim().toLowerCase();
@@ -413,8 +394,8 @@ function zeichne() {
   MAIL_FILTER.forEach(([k, l]) => sm.append(navItem(l, inP.filter(p => mailPasst(p, k)).length, S.f.mail === k, () => { S.f.mail = k; zeichne(); })));
   const sk = $('#sideKonto'); sk.textContent = '';
   KONTO_FILTER.forEach(([k, l]) => sk.append(navItem(l, inP.filter(p => kontoPasst(p, k)).length, S.f.konto === k, () => { S.f.konto = k; zeichne(); })));
-  const sh = $('#sideHaken'); sh.textContent = '';
-  [['alle', 'Alle'], ['offen', 'Nicht dazugerechnet'], ['ja', 'Dazugerechnet']].forEach(([k, l]) => sh.append(navItem(l, null, S.f.haken === k, () => { S.f.haken = k; zeichne(); })));
+  const sh = $('#sideHaken'); if (sh) sh.textContent = '';
+  if (sh) [['alle', 'Alle'], ['offen', 'Nicht dazugerechnet'], ['ja', 'Dazugerechnet']].forEach(([k, l]) => sh.append(navItem(l, null, S.f.haken === k, () => { S.f.haken = k; zeichne(); })));
   const counts = {}; let ohne = 0;
   S.personen.forEach(p => { if (p.state) counts[p.state] = (counts[p.state] || 0) + 1; else ohne++; });
   const known = ['alle', 'ohne', ...Object.keys(counts)];
@@ -427,7 +408,7 @@ function zeichne() {
   // Kapseln (Handy)
   const chips = $('#chips'); chips.textContent = '';
   [{ k: 'alle', l: 'Alle' }, ...STATUS].forEach(s => chips.append(h('button', { class: 'chip', 'data-s': s.k, 'aria-pressed': String(S.f.status === s.k), onclick: () => { S.f.status = s.k; zeichne(); } }, s.k === 'alle' ? null : h('span', { class: 'sw-dot ' + s.k }), s.l, h('span', { class: 'n', text: cnt[s.k] }))));
-  const b = (S.f.state !== 'alle') + (S.f.haken !== 'alle') + (S.f.mail !== 'alle') + (S.f.konto !== 'alle');
+  const b = (S.f.state !== 'alle') + (istAdmin() && S.f.haken !== 'alle') + (S.f.mail !== 'alle') + (S.f.konto !== 'alle');
   const badge = $('#fbadge'); if (badge) { badge.hidden = !b; badge.textContent = b; }
 
   // Zeilen
@@ -445,7 +426,7 @@ function zeichne() {
   }
   const grp = h('div', { class: 'group' }, h('div', { class: 'colhead' }, h('span'), h('span', { text: 'Person' }), h('span', { text: 'State' }), h('span', { text: 'Konten' }), h('span', { text: 'Stufe' }), h('span', { text: 'Zuletzt' })));
   rows.forEach(p => grp.append(zeile(p)));
-  box.append(grp, h('div', { class: 'foot', text: rows.length + ' von ' + inP.length + ' angezeigt, ' + inP.filter(p => p.zaehlt).length + ' dazugerechnet' }));
+  box.append(grp, h('div', { class: 'foot', text: rows.length + ' von ' + inP.length + ' angezeigt' + (istAdmin() ? ', ' + inP.filter(p => p.zaehlt).length + ' dazugerechnet' : '') }));
 }
 function aehnTag(p) {
   const am = aehnlichkeiten().get(p.id); if (!am || !am.length) return null;
@@ -464,7 +445,7 @@ function zeile(p) {
     p.zustaendig ? h('span', { text: 'Zuständig: ' + p.zustaendig }) : null);
   const subm = h('div', { class: 'sub-m', text: [p.state ? p.state + (STATES[p.state] ? ' · ' + STATES[p.state] : '') : 'Ohne State'].join(' · ') });
   return h('div', { class: 'row', 'data-id': p.id },
-    h('label', { class: 'cb' }, h('input', { class: 'cbx', type: 'checkbox', checked: !!p.zaehlt, 'aria-label': 'Dazurechnen: ' + tv.t, title: 'Dazurechnen', onchange: e => quick(p.id, { zaehlt: e.target.checked }) })),
+    istAdmin() ? h('label', { class: 'cb' }, h('input', { class: 'cbx', type: 'checkbox', checked: !!p.zaehlt, 'aria-label': 'Dazurechnen: ' + tv.t, title: 'Dazurechnen', onchange: e => quick(p.id, { zaehlt: e.target.checked }) })) : h('span', { class: 'cb' }),
     h('div', { class: 'c-main' }, h('div', { class: 'nmline' }, S.f.projekt === 'alle' ? projektSymbol(projektVon(p.projekt_id), 'mini') : null, h('button', { class: 'nm', text: tv.t, onclick: () => personSheet(p.id) }), p.adressnummer ? h('span', { class: 'nr', title: 'Adressnummer', text: 'Nr. ' + p.adressnummer }) : null, p.dateien ? h('span', { class: 'nr', title: 'Dateien', text: p.dateien + (p.dateien === 1 ? ' Datei' : ' Dateien') }) : null, aehnTag(p)), sub, subm, h('div', { class: 'konten-m' }, ...kontenZeile(p))),
     p.state ? h('div', { class: 'c-state', title: STATES[p.state] || p.state, text: p.state }) : h('div', { class: 'c-state leer', text: 'ohne' }),
     h('div', { class: 'c-konten' }, ...kontenZeile(p, true)),
@@ -559,7 +540,7 @@ function filterSheet() {
   const selO = h('select', { id: 'f-sort', 'aria-label': 'Sortierung', onchange: e => { S.f.sort = e.target.value; zeichne(); } }, ...SORTS.map(([v, t]) => h('option', { value: v, text: t })));
   selO.value = S.f.sort;
   const sh = sheetEl('Filter', h('div', { class: 'sheet-b' },
-    h('div', { class: 'fg' }, h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Land' }), selL), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Mail' }), selM), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Konto' }), selK), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'State' }), selS), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Dazurechnen' }), selH), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Sortierung' }), selO)),
+    h('div', { class: 'fg' }, h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Land' }), selL), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Mail' }), selM), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Konto' }), selK), h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'State' }), selS), istAdmin() ? h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Dazurechnen' }), selH) : null, h('label', { class: 'fr' }, h('span', { class: 'fl', text: 'Sortierung' }), selO)),
     h('button', { class: 'btn', text: 'Zurücksetzen', onclick: () => { S.f = { status: 'alle', q: S.f.q, state: 'alle', haken: 'alle', projekt: S.f.projekt, mail: 'alle', konto: 'alle', sort: 'neu' }; zeichne(); sh.__close(); } })),
     { left: h('button', { class: 'tbtn', text: 'Schließen', onclick: () => sh.__close() }), right: h('button', { class: 'tbtn strong', text: 'Fertig', onclick: () => sh.__close() }) });
   oeffne(sh, true);
@@ -698,6 +679,7 @@ function personSheet(id) {
       warnBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return;
     }
     const neuF = { name: nm, adressnummer: anr.value.trim(), state: st.value || null, nummer: nummer.value.trim(), email: email.value.trim(), adresse: adresse.value.trim(), status: status.value, zaehlt: haken.checked, wert: wz, projekt: projSel.value, mail_status: mailWahl || null, betonline: bet, stake: stk, zustaendig: zust.value.trim(), notiz: notiz.value.trim() };
+    if (!istAdmin()) { delete neuF.zaehlt; delete neuF.wert; }
     let felder = {};
     if (neu) { for (const [k, v] of Object.entries(neuF)) if (v !== '' && v !== null && !(['zaehlt', 'betonline', 'stake'].includes(k) && v === false) && !(k === 'status' && v === 'leer')) felder[k] = v; }
     else {
@@ -726,7 +708,7 @@ function personSheet(id) {
   const body = h('div', { class: 'sheet-b' },
     warnBox,
     h('div', { class: 'fg' }, frow('Projekt', projSel), frow('Name', name), soft, frow('Adressnr.', anr), frow('State', st)),
-    h('div', { class: 'fg' }, frow('Stufe', status), frow('Wert (€)', wert), h('label', { class: 'fr sw-row' }, h('span', { class: 'fl', text: 'Dazurechnen' }), haken)),
+    h('div', { class: 'fg' }, frow('Stufe', status), istAdmin() ? [frow('Wert (€)', wert), h('label', { class: 'fr sw-row' }, h('span', { class: 'fl', text: 'Dazurechnen' }), haken)] : null),
     h('div', { class: 'fg' }, frow('Nummer', nummer, cp(() => nummer.value)), frow('E-Mail', email, cp(() => email.value)), h('div', { class: 'fr ms' }, h('span', { class: 'fl', text: 'Mail-Status' }), h('div', { class: 'mbtns' }, erBtn, esBtn)), frow('Adresse', adresse, cp(() => adresse.value), true)),
     h('div', null, h('div', { class: 'fg' }, h('div', { class: 'fr konto' }, h('span', { class: 'fl', text: 'Konten' }), h('div', { class: 'kbtns' }, betBtn, stakeBtn))), kWarn, kHint),
     h('div', { class: 'fg' }, frow('Zuständig', zust), frow('Notiz', notiz, null, true)),
@@ -860,14 +842,14 @@ function startAufbau() {
       h('button', { class: 'pcard', type: 'button', onclick: () => oeffneProjekt(pr.id), 'aria-label': pr.name + ': ' + a.length + (a.length === 1 ? ' Person' : ' Personen') },
         projektSymbol(pr, 'big'),
         h('div', { class: 'pc-t' }, h('strong', { text: pr.name }), h('span', { class: 'pc-s', text: a.length + (a.length === 1 ? ' Person' : ' Personen') })),
-        h('div', { class: 'pc-m' }, h('b', { text: eur(summe(ang)) }), h('small', { text: 'angekommen' })),
+        istAdmin() ? h('div', { class: 'pc-m' }, h('b', { text: eur(summe(ang)) }), h('small', { text: 'angekommen' })) : null,
         h('div', { class: 'pc-k', text: es + (es === 1 ? ' Mail' : ' Mails') + ' erstellt, ' + er + ' erhalten' })),
       h('button', { class: 'pc-edit', type: 'button', 'aria-label': pr.name + ' bearbeiten', title: 'Bearbeiten', onclick: () => projektSheet(pr) }, ic('edit')));
   };
   const alle = h('button', { class: 'pcard alle', type: 'button', onclick: () => oeffneProjekt('alle'), 'aria-label': 'Alle Personen: ' + P.length },
     h('span', { class: 'psym emoji big' }, ic('people')),
     h('div', { class: 'pc-t' }, h('strong', { text: 'Alle Personen' }), h('span', { class: 'pc-s', text: P.length + (P.length === 1 ? ' Person' : ' Personen') + ' in allen Projekten' })),
-    h('div', { class: 'pc-m' }, h('b', { text: eur(summe(an)) }), h('small', { text: 'angekommen' })),
+    istAdmin() ? h('div', { class: 'pc-m' }, h('b', { text: eur(summe(an)) }), h('small', { text: 'angekommen' })) : null,
     h('div', { class: 'pc-k', text: 'Kein Name und keine Mail kommt doppelt vor' }));
   const neuK = h('button', { class: 'pcard neu', type: 'button', onclick: () => projektSheet(null), 'aria-label': 'Projekt erstellen' },
     h('span', { class: 'psym emoji big plus' }, ic('plus')),
@@ -878,14 +860,14 @@ function startAufbau() {
     h('header', { class: 'start-top' },
       h('div', { class: 'start-brand' }, logoImg(36), h('div', null, h('h1', { text: 'Adress-Tracker' }), h('div', { class: 'sub', id: 'sub' }))),
       h('div', { class: 'start-actions' },
-        h('button', { class: 'btn', type: 'button', onclick: uebersichtSheet }, ic('sum'), h('span', { class: 'lbl', text: 'Übersicht' })),
+        istAdmin() ? h('button', { class: 'btn', type: 'button', onclick: uebersichtSheet }, ic('sum'), h('span', { class: 'lbl', text: 'Übersicht' })) : null,
         h('button', { class: 'ibtn', 'aria-label': 'Mehr', onclick: ev => hauptmenue(ev.currentTarget) }, ic('more')),
         h('button', { class: 'side-me compact', onclick: profilSheet, 'aria-label': 'Profil öffnen' }, avatar(S.me.name)))),
     h('main', { class: 'start' },
-      h('button', { class: 'gesamt', type: 'button', onclick: () => uebersichtSheet(), 'aria-label': 'Gewinn gemeinsam, Übersicht öffnen' },
+      istAdmin() ? h('button', { class: 'gesamt', type: 'button', onclick: () => uebersichtSheet(), 'aria-label': 'Gewinn gemeinsam, Übersicht öffnen' },
         h('div', { class: 'g-l', text: 'Gewinn gemeinsam, alle Projekte zusammen' }),
         h('div', { class: 'g-n', text: eur(summe(an)) }),
-        h('div', { class: 'g-s', text: an.length + (an.length === 1 ? ' Person' : ' Personen') + ' angekommen' + (wartet.length ? ', ' + eur(summe(wartet)) + ' warten noch' : '') })),
+        h('div', { class: 'g-s', text: an.length + (an.length === 1 ? ' Person' : ' Personen') + ' angekommen' + (wartet.length ? ', ' + eur(summe(wartet)) + ' warten noch' : '') })) : null,
       h('h2', { class: 'start-h', text: 'Projekte' }),
       h('div', { class: 'pgrid' }, ...S.projekte.map(karte), alle, neuK),
       (doppelt || aehn) ? h('p', { class: 'start-sum' }, doppelt ? doppelt + ' Personen haben einen doppelten Namen oder eine doppelte Mail. ' : '', aehn ? aehn + ' Personen haben einen sehr ähnlichen Namen oder eine sehr ähnliche Mail (blau markiert in der Liste).' : '') : null));
@@ -1105,6 +1087,7 @@ function einstellungenBlock(err) {
   ];
 }
 function uebersichtSheet(pid) {
+  if (!istAdmin()) return;
   pid = typeof pid === 'string' ? pid : 'alle';
   const Pall = S.personen, P = pid === 'alle' ? Pall : Pall.filter(p => p.projekt_id === pid), pr0 = pid === 'alle' ? null : projektVon(pid);
   const jetzt = P.filter(zaehltJetzt), wartet = P.filter(p => p.zaehlt && !stufeReicht(p)), nein = P.filter(p => !p.zaehlt);
@@ -1142,79 +1125,183 @@ function uebersichtSheet(pid) {
   oeffne(sh, true);
 }
 
-/* ---------- Liste einfuegen (Admin) */
-const HEAD = {
-  name: ['name', 'person', 'vorname nachname'], adressnummer: ['adressnummer', 'adress-nummer', 'adressnr', 'adress-nr', 'adress nr', 'adr-nr', 'adrnr'], state: ['state', 'bundesstaat', 'staat'],
-  nummer: ['nummer', 'telefon', 'phone', 'tel', 'handy', 'number', 'telefonnummer'], email: ['email', 'e-mail', 'mail'],
-  adresse: ['adresse', 'address'], status: ['status'], zustaendig: ['zuständig', 'zustaendig', 'owner', 'verantwortlich'],
-  notiz: ['notiz', 'notizen', 'note', 'notes', 'bemerkung'],
-};
-function parseListe(text) {
-  const lines = text.replace(/\r/g, '').split('\n').map(l => l.trim()).filter(Boolean);
-  const rows = [], fehler = [];
-  if (!lines.length) return { rows, fehler };
-  let d = lines.some(l => l.includes('\t')) ? '\t' : lines.some(l => l.includes(';')) ? ';' : null;
-  let cols = ['name', 'state', 'nummer', 'email', 'adresse'], start = 0;
-  const fd = d || (lines[0].includes(',') ? ',' : null);
-  if (fd) {
-    const cells = lines[0].split(fd).map(x => x.trim().replace(/^"|"$/g, '').toLowerCase());
-    if (cells.some(c => HEAD.name.includes(c))) { cols = cells.map(c => Object.keys(HEAD).find(k => HEAD[k].includes(c)) || null); start = 1; d = fd; }
+/* ---------- PDF (Admin): ohne Bibliothek. Linien, Flaechen und Text sind Vektoren, darum immer scharf, nie verpixelt. */
+const HELV = '278 278 355 556 556 889 667 191 333 333 389 584 278 333 278 278 556 556 556 556 556 556 556 556 556 556 278 278 584 584 584 556 1015 667 667 722 722 667 611 778 722 278 500 667 556 833 722 778 667 778 722 667 611 722 667 944 667 667 611 278 278 278 469 556 333 556 556 500 556 556 278 556 556 222 222 500 222 833 556 556 556 556 333 500 278 556 500 722 500 500 500 334 260 334 584'.split(' ').map(Number);
+function pdfBreite(t, gr, fett) {
+  let w = 0;
+  for (const ch of String(t)) {
+    const c = ch.charCodeAt(0);
+    let b = 556;
+    if (c >= 32 && c <= 126) b = HELV[c - 32];
+    else if (c === 223) b = 611;
+    else { const f = ch.normalize('NFD').charCodeAt(0); if (f >= 32 && f <= 126) b = HELV[f - 32]; }
+    w += b;
   }
-  for (let i = start; i < lines.length; i++) {
-    const cells = (d ? lines[i].split(d) : [lines[i]]).map(x => x.trim().replace(/^"(.*)"$/, '$1'));
-    const o = {};
-    cols.forEach((c, j) => { if (c && cells[j]) o[c] = cells[j]; });
-    if (o.state) o.state = normState(o.state);
-    if (o.status) { const s = normStatus(o.status); if (s) o.status = s; else delete o.status; }
-    if (!o.name) { fehler.push('Zeile ' + (i + 1) + ': kein Name'); continue; }
-    rows.push(o);
-  }
-  return { rows, fehler };
+  return w * gr / 1000 * (fett ? 1.07 : 1);
 }
-function importSheet() {
-  const ta = h('textarea', { id: 'imp', rows: 8, placeholder: 'Anna Beispiel\nBen Muster\n\noder aus Excel oder Sheets kopieren: Name, State, Nummer, E-Mail, Adresse', 'aria-label': 'Liste' });
-  const skip = h('input', { id: 'imp-skip', class: 'sw', type: 'checkbox', role: 'switch', checked: true });
-  const prev = h('div'); const err = h('p', { class: 'err' });
-  const projI = h('select', { id: 'imp-projekt', 'aria-label': 'In welches Projekt' }, ...S.projekte.map(x => h('option', { value: x.id, text: x.name }))); projI.value = S.f.projekt !== 'alle' ? S.f.projekt : 'usa';
-  const go = h('button', { class: 'tbtn strong', type: 'button', text: 'Einspielen', disabled: true });
-  let parsed = { rows: [], fehler: [] };
-  ta.addEventListener('input', () => {
-    parsed = parseListe(ta.value); prev.textContent = '';
-    go.disabled = !parsed.rows.length;
-    if (!ta.value.trim()) return;
-    const vorhanden = new Set(S.personen.map(x => toks(x.name).sort().join(' ')));
-    const schon = parsed.rows.filter(r => vorhanden.has(toks(r.name).sort().join(' '))).length;
-    prev.append(h('p', { class: 'hint', text: parsed.rows.length + ' Personen erkannt' + (schon ? ', davon ' + schon + ' mit gleichem Namen schon in der Liste' : '') + (parsed.fehler.length ? ', ' + parsed.fehler.length + ' Zeilen ohne Name übersprungen' : '') + '. Vorschau der ersten 5:' }));
-    const tb = h('table', { class: 'pv' }, h('thead', null, h('tr', null, ...['Name', 'State', 'Nummer', 'E-Mail', 'Adresse', 'Stufe'].map(t => h('th', { text: t })))));
-    const body = h('tbody'); parsed.rows.slice(0, 5).forEach(r => body.append(h('tr', null, ...['name', 'state', 'nummer', 'email', 'adresse', 'status'].map(k => h('td', { text: r[k] ? (k === 'status' ? STATUS_L[r[k]] : r[k]) : '' })))));
-    tb.append(body); prev.append(h('div', { class: 'fg table-wrap' }, tb));
+const PDF_EXTRA = { 'Ł': 'L', 'ł': 'l', 'Đ': 'D', 'đ': 'd', 'ı': 'i', 'İ': 'I' };
+/* Text in die Schrift "WinAnsi" umsetzen und fuer PDF maskieren (alles bleibt reines ASCII) */
+function pdfText(t) {
+  let o = '';
+  for (const ch of String(t)) {
+    let c = ch.charCodeAt(0);
+    if (ch === '€') c = 128; else if (ch === '–') c = 150; else if (ch === '·') c = 183;
+    else if (!((c >= 32 && c <= 126) || (c >= 160 && c <= 255))) {
+      const b = PDF_EXTRA[ch] || ch.normalize('NFD')[0]; c = b.charCodeAt(0);
+      if (!(c >= 32 && c <= 126)) c = 63;
+    }
+    o += (c === 40 || c === 41 || c === 92) ? '\\' + String.fromCharCode(c) : (c >= 32 && c <= 126) ? String.fromCharCode(c) : '\\' + c.toString(8).padStart(3, '0');
+  }
+  return o;
+}
+function pdfFarbe(hex) { const v = parseInt(hex.slice(1), 16); return [(v >> 16) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255].map(x => x.toFixed(3)).join(' '); }
+function pdfDokument() {
+  const seiten = []; let cur = null; const z = n => (Math.round(n * 100) / 100).toString();
+  return {
+    neueSeite(w, hh) { cur = { w, h: hh, c: [] }; seiten.push(cur); return cur; },
+    anzahl: () => seiten.length,
+    seite: i => seiten[i],
+    rect(x, y, w, hh, fill) { cur.c.push(pdfFarbe(fill) + ' rg ' + z(x) + ' ' + z(cur.h - y - hh) + ' ' + z(w) + ' ' + z(hh) + ' re f'); },
+    rundRect(x, y, w, hh, r, fill) {
+      const Y = cur.h - y - hh, k = r * 0.5523;
+      cur.c.push(pdfFarbe(fill) + ' rg ' + z(x + r) + ' ' + z(Y) + ' m ' + z(x + w - r) + ' ' + z(Y) + ' l ' + z(x + w - r + k) + ' ' + z(Y) + ' ' + z(x + w) + ' ' + z(Y + r - k) + ' ' + z(x + w) + ' ' + z(Y + r) + ' c '
+        + z(x + w) + ' ' + z(Y + hh - r) + ' l ' + z(x + w) + ' ' + z(Y + hh - r + k) + ' ' + z(x + w - r + k) + ' ' + z(Y + hh) + ' ' + z(x + w - r) + ' ' + z(Y + hh) + ' c '
+        + z(x + r) + ' ' + z(Y + hh) + ' l ' + z(x + r - k) + ' ' + z(Y + hh) + ' ' + z(x) + ' ' + z(Y + hh - r + k) + ' ' + z(x) + ' ' + z(Y + hh - r) + ' c '
+        + z(x) + ' ' + z(Y + r) + ' l ' + z(x) + ' ' + z(Y + r - k) + ' ' + z(x + r - k) + ' ' + z(Y) + ' ' + z(x + r) + ' ' + z(Y) + ' c f');
+    },
+    linie(x1, y1, x2, y2, farbe, breite) { cur.c.push(pdfFarbe(farbe) + ' RG ' + z(breite || .5) + ' w ' + z(x1) + ' ' + z(cur.h - y1) + ' m ' + z(x2) + ' ' + z(cur.h - y2) + ' l S'); },
+    text(x, y, t, gr, fett, farbe) { cur.c.push('BT /' + (fett ? 'F2' : 'F1') + ' ' + z(gr) + ' Tf ' + pdfFarbe(farbe || '#111827') + ' rg ' + z(x) + ' ' + z(cur.h - y) + ' Td (' + pdfText(t) + ') Tj ET'); },
+    seiteText(i, x, y, t, gr, fett, farbe) { const s = seiten[i], k = cur; cur = s; this.text(x, y, t, gr, fett, farbe); cur = k; },
+    ausgeben() {
+      const o = []; o[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+      o[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+      o[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+      const kids = []; let n = 5;
+      seiten.forEach(s => { const st = s.c.join('\n'); o[n] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + s.w + ' ' + s.h + '] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' + (n + 1) + ' 0 R >>'; o[n + 1] = '<< /Length ' + st.length + ' >>\nstream\n' + st + '\nendstream'; kids.push(n + ' 0 R'); n += 2; });
+      o[2] = '<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + kids.length + ' >>';
+      let out = '%PDF-1.4\n'; const off = [];
+      for (let i = 1; i < o.length; i++) { off[i] = out.length; out += i + ' 0 obj\n' + o[i] + '\nendobj\n'; }
+      const xr = out.length;
+      out += 'xref\n0 ' + o.length + '\n0000000000 65535 f \n' + off.slice(1).map(x => String(x).padStart(10, '0') + ' 00000 n \n').join('');
+      return out + 'trailer\n<< /Size ' + o.length + ' /Root 1 0 R >>\nstartxref\n' + xr + '\n%%EOF';
+    },
+  };
+}
+const PDF_STUFE = { leer: '#6b7280', zu_erledigen: '#b45309', erledigt: '#15803d', veraltet: '#7e22ce', test: '#1d4ed8' };
+function pdfPassend(t, breite, gr, fett) {
+  t = String(t == null ? '' : t); if (pdfBreite(t, gr, fett) <= breite) return t;
+  while (t.length > 1 && pdfBreite(t + '...', gr, fett) > breite) t = t.slice(0, -1);
+  return t + '...';
+}
+function pdfTabelle(rows, opt) {
+  const doc = pdfDokument(), W = 842, H = 595, R = 30, kopfH = 22, zH = 19, gr = 8.5;
+  const SP = [['Projekt', 62], ['Name', 110], ['E-Mail', 146], ['Nummer', 72], ['State', 32], ['Mail', 50], ['Konten', 56], ['Stufe', 92], ['Wert', 52], ['Zählt', 44], ['Angelegt', 62]];
+  const gesamtW = SP.reduce((t, c) => t + c[1], 0), x0 = R + (W - 2 * R - gesamtW) / 2;
+  const an = rows.filter(zaehltJetzt), warten = rows.filter(p => p.zaehlt && !stufeReicht(p));
+  const kopfBlock = () => {
+    doc.neueSeite(W, H);
+    doc.rect(0, 0, W, 6, '#1f2a44');
+    doc.text(R + 2, 40, 'Adress-Tracker', 20, true, '#111827');
+    doc.text(R + 2, 56, 'Personenliste', 10.5, false, '#4b5563');
+    return 78;
+  };
+  let y = kopfBlock();
+  // Filter-Zeile und Zusammenfassung
+  doc.text(R + 2, y, opt.beschreibung, 8.5, false, '#4b5563'); y += 14;
+  const karten = [['Personen', String(rows.length)], ['Angekommen', eur(summe(an)) + '  (' + an.length + ')'], ['Wartet noch', eur(summe(warten)) + '  (' + warten.length + ')']];
+  karten.forEach((k, i) => { const kx = R + 2 + i * 190; doc.rundRect(kx, y, 180, 36, 6, '#f3f4f6'); doc.text(kx + 10, y + 14, k[0], 8, false, '#6b7280'); doc.text(kx + 10, y + 29, k[1], 12, true, '#111827'); });
+  y += 50;
+  const kopfZeile = () => {
+    doc.rect(x0, y, gesamtW, kopfH, '#1f2a44');
+    let x = x0; SP.forEach(([t, w]) => { const r = t === 'Wert'; doc.text(r ? x + w - 6 - pdfBreite(t, 8.5, true) : x + 6, y + 14.5, t, 8.5, true, '#ffffff'); x += w; });
+    y += kopfH;
+  };
+  kopfZeile();
+  if (!rows.length) doc.text(x0 + 6, y + 24, 'Keine Personen im gewählten Zeitraum.', 10, false, '#6b7280');
+  const untenGrenze = H - 46;
+  rows.forEach((p, i) => {
+    if (y + zH > untenGrenze) { y = kopfBlock() ; doc.text(R + 2, y, opt.beschreibung + ' (Fortsetzung)', 8.5, false, '#4b5563'); y += 16; kopfZeile(); }
+    if (i % 2 === 1) doc.rect(x0, y, gesamtW, zH, '#f6f7f9');
+    doc.linie(x0, y + zH, x0 + gesamtW, y + zH, '#e5e7eb', .5);
+    const base = y + 12.8; let x = x0;
+    const zelle = (idx, t, o) => { const w = SP[idx][1]; const s = pdfPassend(t, w - 12, gr, o && o.fett); doc.text(o && o.rechts ? x + w - 6 - pdfBreite(s, gr, o.fett) : x + 6, base, s, gr, o && o.fett, o && o.farbe); x += w; };
+    zelle(0, projektTitel(p.projekt_id));
+    zelle(1, titel(p), { fett: true });
+    zelle(2, p.email || '–', { farbe: p.email ? '#111827' : '#9ca3af' });
+    zelle(3, p.nummer || '–', { farbe: p.nummer ? '#111827' : '#9ca3af' });
+    zelle(4, p.state || '–', { farbe: p.state ? '#111827' : '#9ca3af' });
+    zelle(5, p.mail_status === 'erhalten' ? 'Erhalten' : p.mail_status === 'erstellt' ? 'Erstellt' : '–', { fett: !!p.mail_status, farbe: p.mail_status === 'erhalten' ? '#1d4ed8' : p.mail_status === 'erstellt' ? '#7e22ce' : '#9ca3af' });
+    { // Konten als farbige Marken
+      let bx = x + 6;
+      if (p.betonline) { doc.rundRect(bx, y + 4, 18, 11, 3, '#e8590c'); doc.text(bx + 3.2, y + 12, 'BO', 6.5, true, '#ffffff'); bx += 22; }
+      if (p.stake) { doc.rundRect(bx, y + 4, 12, 11, 3, '#1db954'); doc.text(bx + 3.6, y + 12, 'S', 7, true, '#ffffff'); }
+      if (!p.betonline && !p.stake) doc.text(x + 6, base, '–', gr, false, '#9ca3af');
+      x += SP[6][1];
+    }
+    zelle(7, STATUS_L[p.status] || p.status, { fett: true, farbe: PDF_STUFE[p.status] });
+    zelle(8, eur(wertVon(p)), { rechts: true, farbe: p.zaehlt ? '#111827' : '#9ca3af' });
+    zelle(9, zaehltJetzt(p) ? 'Ja' : p.zaehlt ? 'wartet' : '–', { fett: zaehltJetzt(p), farbe: zaehltJetzt(p) ? '#15803d' : p.zaehlt ? '#b45309' : '#9ca3af' });
+    zelle(10, datumDE((p[opt.datumFeld] || '').slice(0, 10)));
+    y += zH;
   });
-  go.addEventListener('click', async () => {
-    err.textContent = ''; go.disabled = true; let neu = 0, ueb = 0;
+  // Summenzeile
+  if (rows.length) {
+    if (y + 26 > untenGrenze) { y = kopfBlock() + 4; }
+    doc.rect(x0, y, gesamtW, 24, '#eef2ff');
+    doc.text(x0 + 6, y + 16, 'Gesamt: ' + rows.length + (rows.length === 1 ? ' Person' : ' Personen'), 9.5, true, '#1f2a44');
+    const t = 'Angekommen: ' + eur(summe(an));
+    doc.text(x0 + gesamtW - 8 - pdfBreite(t, 9.5, true), y + 16, t, 9.5, true, '#15803d');
+  }
+  // Fuss auf jeder Seite
+  const stand = new Date().toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+  for (let i = 0; i < doc.anzahl(); i++) {
+    doc.seiteText(i, R + 2, H - 22, 'Adress-Tracker, Stand ' + stand, 7.5, false, '#9ca3af');
+    const s = 'Seite ' + (i + 1) + ' von ' + doc.anzahl(); doc.seiteText(i, W - R - 2 - pdfBreite(s, 7.5, false), H - 22, s, 7.5, false, '#9ca3af');
+  }
+  return doc.ausgeben();
+}
+/* Auswahl vor dem Herunterladen: Zeitraum, Projekt, Stufe */
+function pdfSheet() {
+  if (!istAdmin()) return;
+  const lok = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const von = h('input', { id: 'pdf-von', type: 'date', 'aria-label': 'Von' }), bis = h('input', { id: 'pdf-bis', type: 'date', 'aria-label': 'Bis' });
+  const feld = h('select', { id: 'pdf-feld', 'aria-label': 'Datum nach' }, h('option', { value: 'erstellt', text: 'Angelegt am' }), h('option', { value: 'geaendert', text: 'Zuletzt geändert' }));
+  const proj = h('select', { id: 'pdf-projekt', 'aria-label': 'Projekt' }, h('option', { value: 'alle', text: 'Alle Projekte' }), ...S.projekte.map(x => h('option', { value: x.id, text: x.name })));
+  if (S.f.projekt !== 'alle') proj.value = S.f.projekt;
+  const stufe = h('select', { id: 'pdf-stufe', 'aria-label': 'Stufe' }, h('option', { value: 'alle', text: 'Alle Stufen' }), ...STATUS.map(x => h('option', { value: x.k, text: x.l })));
+  const info = h('p', { class: 'hint' }), err = h('p', { class: 'err' });
+  const auswahl = () => S.personen.filter(p => {
+    if (proj.value !== 'alle' && p.projekt_id !== proj.value) return false;
+    if (stufe.value !== 'alle' && p.status !== stufe.value) return false;
+    const d = p[feld.value] ? lok(new Date(p[feld.value])) : '';
+    if (von.value && d < von.value) return false;
+    if (bis.value && d > bis.value) return false;
+    return true;
+  });
+  const zeigeAnzahl = () => { const n = auswahl().length; info.textContent = n + (n === 1 ? ' Person kommt' : ' Personen kommen') + ' ins PDF.'; go.disabled = n === 0; };
+  const voreinstellung = (t, a, b) => h('button', { class: 'chip', type: 'button', text: t, onclick: () => { von.value = a; bis.value = b; zeigeAnzahl(); } });
+  const heute0 = new Date(), monat1 = new Date(heute0.getFullYear(), heute0.getMonth(), 1), vor30 = new Date(heute0.getTime() - 29 * 86400000), jahr1 = new Date(heute0.getFullYear(), 0, 1);
+  const go = h('button', { class: 'btn pri big', type: 'button', text: 'PDF laden' });
+  go.addEventListener('click', () => {
+    err.textContent = '';
+    if (von.value && bis.value && von.value > bis.value) { err.textContent = 'Das Von-Datum liegt nach dem Bis-Datum.'; return; }
     try {
-      for (let i = 0; i < parsed.rows.length; i += 200) {
-        const r = await rpc('tr_import', { p_code: S.code, p_zeilen: parsed.rows.slice(i, i + 200).map(r => ({ ...r, projekt: projI.value })), p_doppelte_ueberspringen: skip.checked });
-        neu += r.neu; ueb += r.uebersprungen;
-      }
-      await laden(false); sh.__close(); toast(neu + ' Personen eingespielt' + (ueb ? ', ' + ueb + ' Doppelte übersprungen' : ''));
-    } catch (e) { err.textContent = fehlertext(e) + (neu ? ' (' + neu + ' waren schon drin)' : ''); go.disabled = false; laden(false); }
+      const rows = auswahl().sort((a, b) => S.projekte.findIndex(x => x.id === a.projekt_id) - S.projekte.findIndex(x => x.id === b.projekt_id) || titel(a).localeCompare(titel(b), 'de', { sensitivity: 'base' }));
+      const bes = [proj.value === 'alle' ? 'Alle Projekte' : 'Projekt: ' + projektTitel(proj.value), stufe.value === 'alle' ? 'Alle Stufen' : 'Stufe: ' + STATUS_L[stufe.value],
+        (von.value || bis.value) ? (feld.value === 'erstellt' ? 'Angelegt' : 'Zuletzt geändert') + ': ' + (von.value ? datumDE(von.value) : 'Anfang') + ' bis ' + (bis.value ? datumDE(bis.value) : 'heute') : 'Ganzer Zeitraum'].join('   ·   ');
+      const pdf = pdfTabelle(rows, { beschreibung: bes, datumFeld: feld.value });
+      const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+      const a = h('a', { href: url, download: 'adress-tracker-' + heute() + '.pdf' }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 10000);
+      sh.__close(); toast('PDF geladen');
+    } catch (e) { err.textContent = 'Das PDF konnte nicht erstellt werden.'; }
   });
-  const sh = sheetEl('Liste einfügen', h('div', { class: 'sheet-b' },
-    h('p', { class: 'hint', text: 'Eine Person pro Zeile. Nur Namen geht. Mit mehreren Spalten (Tab, Semikolon, oder Komma mit Kopfzeile) gilt die Reihenfolge Name, State, Nummer, E-Mail, Adresse. Oder die Kopfzeile bestimmt die Spalten (Name, State, Nummer, E-Mail, Adresse, Status, Zuständig, Notiz).' }),
-    h('div', { class: 'fg' }, h('label', { class: 'fr one' }, ta)),
-    h('div', { class: 'fg' }, frow('Projekt', projI), h('label', { class: 'fr sw-row' }, h('span', { class: 'fl', text: 'Doppelte Namen oder Mails überspringen' }), skip)),
-    prev, err), { wide: true, left: h('button', { class: 'tbtn', type: 'button', text: 'Abbrechen', onclick: () => sh.__close() }), right: go });
-  oeffne(sh, false); ta.focus();
-}
-
-/* ---------- CSV (Admin) */
-function exportCsv() {
-  const sicher = v => { let s = v == null ? '' : String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
-  const kopf = ['Projekt', 'Name', 'Adressnummer', 'State', 'Nummer', 'E-Mail', 'Adresse', 'Mail-Status', 'Bet Online', 'Stake', 'Stufe', 'Dazurechnen', 'Wert', 'Zuständig', 'Notiz', 'Angelegt von', 'Geändert von', 'Geändert'];
-  const zeilen = sortiere(S.personen).map(p => [projektTitel(p.projekt_id), p.name, p.adressnummer, p.state, p.nummer, p.email, p.adresse, p.mail_status === 'erhalten' ? 'Erhalten' : p.mail_status === 'erstellt' ? 'Erstellt' : '', p.betonline ? 'ja' : 'nein', p.stake ? 'ja' : 'nein', STATUS_L[p.status], p.zaehlt ? 'ja' : 'nein', p.wert == null ? '' : String(p.wert).replace('.', ','), p.zustaendig, p.notiz, p.erstellt_von, p.geaendert_von, p.geaendert ? new Date(p.geaendert).toLocaleString('de-DE') : ''].map(sicher).join(';'));
-  const blob = new Blob(['﻿' + [kopf.map(sicher).join(';'), ...zeilen].join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  const a = h('a', { href: URL.createObjectURL(blob), download: 'adress-tracker-' + heute() + '.csv' });
-  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  [feld, proj, stufe, von, bis].forEach(el => el.addEventListener('change', zeigeAnzahl));
+  const sh = sheetEl('PDF laden', h('div', { class: 'sheet-b' },
+    h('div', { class: 'fg' }, frow('Projekt', proj), frow('Stufe', stufe), frow('Datum nach', feld), frow('Von', von), frow('Bis', bis)),
+    h('div', { class: 'chips' }, voreinstellung('Alles', '', ''), voreinstellung('Dieser Monat', lok(monat1), lok(heute0)), voreinstellung('Letzte 30 Tage', lok(vor30), lok(heute0)), voreinstellung('Dieses Jahr', lok(jahr1), lok(heute0))),
+    info, h('p', { class: 'hint', text: 'Das PDF ist eine saubere Tabelle (Querformat, scharfe Schrift). Leere Felder bei Von und Bis heißen: ohne Grenze.' }), err),
+    { left: h('button', { class: 'tbtn', type: 'button', text: 'Abbrechen', onclick: () => sh.__close() }), foot: go, right: h('button', { class: 'tbtn strong', type: 'button', text: 'Laden', onclick: () => go.click() }) });
+  oeffne(sh, false); zeigeAnzahl();
 }
 
 /* ---------- Profil (jeder) */
@@ -1237,7 +1324,7 @@ function profilSheet() {
     h('div', { class: 'fg' }, frow('Name', name)),
     h('button', { class: 'btn', text: 'Namen speichern', onclick: speichern }),
     h('p', { class: 'hint', text: 'Dein Name steht bei jeder Änderung, die du machst. Alle Angemeldeten sehen dieselbe Liste, Änderungen erscheinen bei allen nach wenigen Sekunden. Teilen sich mehrere Leute einen Zugang, gilt der Name für alle.' }),
-    ...einstellungenBlock(err),
+    ...(istAdmin() ? einstellungenBlock(err) : []),
     admin ? h('div', { class: 'kbar' },
       h('button', { class: 'btn', text: 'Leute hinzufügen', onclick: () => { sh.__close(); zugaengeSheet(); } }),
       h('button', { class: 'btn', text: 'Neuer Schlüssel für mich', onclick: async (ev) => {
@@ -1268,7 +1355,7 @@ function zugaengeSheet() {
         const z = await rpc('tr_zugaenge', { p_code: S.code });
         body.textContent = ''; body.append(h('div', { class: 'segc', role: 'tablist' }, t1, t2));
         const nm = h('input', { id: 'z-name', placeholder: 'Name der Person', maxlength: 100, autocomplete: 'off', autocapitalize: 'words', 'aria-label': 'Name der Person' });
-        const ro = h('select', { id: 'z-rolle', 'aria-label': 'Rolle' }, h('option', { value: 'mitarbeiter', text: 'Mitarbeiter' }), h('option', { value: 'admin', text: 'Admin' }));
+        const ro = h('select', { id: 'z-rolle', 'aria-label': 'Rolle' }, h('option', { value: 'mitarbeiter', text: 'Mitarbeiter (ohne Geld)' }), h('option', { value: 'admin', text: 'Admin (sieht auch Geld)' }));
         const out = h('div', { 'data-out': '' }); const er = h('p', { class: 'err' });
         const anlegen = async (ev) => {
           er.textContent = ''; if (!nm.value.trim()) { er.textContent = 'Bitte einen Namen eintragen.'; nm.focus(); return; }
@@ -1282,12 +1369,13 @@ function zugaengeSheet() {
           h('div', { class: 'fg-t', text: 'Person hinzufügen' }),
           h('div', { class: 'fg' }, frow('Name', nm), frow('Rolle', ro)),
           addBtn, er, out,
+          h('p', { class: 'hint', text: 'Admin sieht und ändert alles, auch alle Euro-Beträge, den Gewinn, Übersicht und Wert und das PDF. Mitarbeiter sieht und bearbeitet nur die Personen und ihre Konten, ohne Geld. Die Rolle änderst du unten mit "Zu Admin" oder "Zu Mitarbeiter".' }),
           h('p', { class: 'hint', text: 'Du bekommst einen persönlichen Link für diese Person. Er wird nur einmal angezeigt. Wer ihn öffnet, ist sofort angemeldet und sieht dieselbe Liste wie alle anderen.' }),
           h('div', { class: 'fg-t', text: 'Wer hat Zugang' }));
         const grp = h('div', { class: 'fg' });
         z.forEach(r => grp.append(h('div', { class: 'prow' },
           h('div', { class: 'prow-top' }, avatar(r.name),
-            h('div', { class: 'prow-t' }, h('strong', { text: r.name }), h('small', { text: 'Seit ' + new Date(r.erstellt).toLocaleDateString('de-DE') + ', zuletzt online ' + rel(r.zuletzt_gesehen) })),
+            h('div', { class: 'prow-t' }, h('strong', { text: r.name }), h('small', { text: 'Seit ' + new Date(r.erstellt).toLocaleDateString('de-DE') + ', zuletzt online ' + rel(r.zuletzt_gesehen) + (r.rolle === 'admin' ? ' · sieht Geld und Übersicht' : ' · nur Personen und Konten, kein Geld') })),
             h('span', { class: 'pill' + (r.rolle === 'admin' ? ' adm' : ''), text: r.rolle === 'admin' ? 'Admin' : 'Mitarbeiter' }),
             h('span', { class: 'pill ' + (r.gesperrt ? 'bad' : 'ok'), text: r.gesperrt ? 'Gesperrt' : 'Aktiv' })),
           h('div', { class: 'prow-actions' },
