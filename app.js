@@ -76,7 +76,14 @@ async function kopieren(text, ok) {
 function store(v) { try { v == null ? localStorage.removeItem(STORE) : localStorage.setItem(STORE, v); } catch (e) {} }
 function stored() { try { return localStorage.getItem(STORE); } catch (e) { return null; } }
 function initialen(n) { const t = String(n || '?').trim().split(/\s+/); return ((t[0] || '?')[0] + (t.length > 1 ? t[t.length - 1][0] : '')).toUpperCase(); }
-function avatar(n, big) { let x = 0; for (const c of String(n)) x = (x * 31 + c.charCodeAt(0)) % 6; return h('div', { class: 'av av' + x + (big ? ' big' : ''), 'aria-hidden': 'true', text: initialen(n) }); }
+const AVATAR_FARBEN = [['blau', 'Blau'], ['tuerkis', 'Türkis'], ['gruen', 'Grün'], ['orange', 'Orange'], ['rot', 'Rot'], ['pink', 'Pink'], ['violett', 'Violett'], ['grau', 'Grau']];
+/* z = Zugang mit avatar_bild und avatar_farbe (optional). Foto nur, wenn es genau ein JPEG als Daten-Adresse ist. */
+function avatar(n, big, z) {
+  if (z && z.avatar_bild && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(z.avatar_bild)) return h('img', { class: 'av bild' + (big ? ' big' : ''), src: z.avatar_bild, alt: '' });
+  const fb = z && AVATAR_FARBEN.some(f => f[0] === z.avatar_farbe) ? z.avatar_farbe : null;
+  let x = 0; for (const c of String(n)) x = (x * 31 + c.charCodeAt(0)) % 6;
+  return h('div', { class: 'av ' + (fb ? 'fb-' + fb : 'av' + x) + (big ? ' big' : ''), 'aria-hidden': 'true', text: initialen(n) });
+}
 
 const ICONS = {
   plus: 'M12 5v14M5 12h14',
@@ -163,6 +170,10 @@ const FEHLER = {
   projekt_nicht_leer: 'In diesem Projekt sind noch Personen. Verschiebe sie zuerst in ein anderes Projekt.',
   letztes_projekt: 'Das letzte Projekt kann nicht gelöscht werden.',
   zu_viele_projekte: 'Mehr als 30 Projekte gehen nicht.',
+  nur_inhaber: 'Das darf nur der Inhaber.',
+  inhaber_geschuetzt: 'Der Inhaber ist geschützt. Er kann nicht herabgestuft, gesperrt oder gelöscht werden.',
+  mail_status_fehlt: 'Bitte den Mail-Status wählen: Erhalten oder Erstellt.',
+  avatar_ungueltig: 'Das Profilbild oder die Farbe ist ungültig.',
   name_doppelt: 'Diesen Namen gibt es schon (in irgendeinem Projekt). Kein Name darf doppelt vorkommen.',
   mail_doppelt: 'Diese E-Mail gibt es schon (in irgendeinem Projekt). Keine Mail darf doppelt vorkommen.',
   stake_gesperrt: 'Bei einer erhaltenen Mail geht Stake nicht mehr, wenn Bet Online schon gesetzt ist.',
@@ -256,13 +267,15 @@ let pollTimer = null;
 async function laden(first) {
   try {
     const r = await rpc('tr_laden', { p_code: S.code });
-    S.me = r.ich; S.stand = r.stand; S.online = true;
+    const rolleAlt = S.me && S.me.rolle; S.me = r.ich; S.stand = r.stand; S.online = true;
+    const rolleGewechselt = !!rolleAlt && rolleAlt !== r.ich.rolle;
+    if (rolleGewechselt) { schliesseAlle(); S.einst = { standardwert: 40, zaehlt_ab: 'veraltet' }; S.f.haken = 'alle'; }
     const sig = JSON.stringify(r.personen), esig = JSON.stringify(r.einstellungen || null);
     const changed = sig !== S.sig || esig !== S.esig;
     S.personen = r.personen; S.sig = sig; S.esig = esig;
     if (r.einstellungen) S.einst = { ...S.einst, ...r.einstellungen };
     if (r.projekte) S.projekte = r.projekte;
-    if (first || (S.ansicht === 'liste' && !$('#rows')) || (S.ansicht === 'start' && !$('.start'))) aufbau();
+    if (first || rolleGewechselt || (S.ansicht === 'liste' && !$('#rows')) || (S.ansicht === 'start' && !$('.start'))) aufbau();
     else if (S.ansicht === 'start') { setSub(); if (changed) startAufbau(); }
     else { setSub(); if (changed) zeichne(); }
     if (!pollTimer) {
@@ -303,7 +316,7 @@ function aufbau() {
       h('div', { class: 'side-label', text: 'Konto' }), h('div', { id: 'sideKonto' }),
       ...(istAdmin() ? [h('div', { class: 'side-label', text: 'Dazurechnen' }), h('div', { id: 'sideHaken' })] : []),
       h('div', { class: 'side-label', text: 'State' }), h('div', { id: 'sideStates' })),
-    h('button', { class: 'side-me', onclick: profilSheet, 'aria-label': 'Profil öffnen' }, avatar(S.me.name),
+    h('button', { class: 'side-me', onclick: profilSheet, 'aria-label': 'Profil öffnen' }, avatar(S.me.name, false, S.me),
       h('span', { class: 'me-t' }, h('strong', { text: S.me.name }), h('small', { text: istAdmin() ? 'Admin' : 'Mitarbeiter' })), ic('chevron')));
 
   const search = h('div', { class: 'search' }, ic('search'),
@@ -328,7 +341,7 @@ function aufbau() {
 }
 function hauptmenue(anchor) {
   const items = [];
-  if (istAdmin()) items.push({ label: 'Übersicht und Wert', icon: 'sum', fn: uebersichtSheet }, { label: 'PDF laden', icon: 'down', fn: pdfSheet }, { label: 'Zugänge', icon: 'people', fn: zugaengeSheet }, '-');
+  if (istAdmin()) items.push({ label: 'Übersicht und Wert', icon: 'sum', fn: uebersichtSheet }, { label: 'PDF laden', icon: 'down', fn: pdfSheet }, { label: 'Admin-Portal', icon: 'people', fn: zugaengeSheet }, '-');
   items.push({ label: 'Profil', icon: 'person', fn: profilSheet });
   popMenu(anchor, items);
 }
@@ -552,7 +565,7 @@ function frow(label, control, extra, tall) {
 }
 function personSheet(id) {
   const neu = id == null;
-  const p = neu ? { name: '', adressnummer: '', state: null, nummer: '', email: '', adresse: '', status: 'leer', zaehlt: false, wert: null, projekt_id: S.f.projekt !== 'alle' ? S.f.projekt : 'usa', mail_status: null, betonline: false, stake: false, zustaendig: '', notiz: '' } : S.personen.find(x => x.id === id);
+  const p = neu ? { name: '', adressnummer: '', state: null, nummer: '', email: '', adresse: '', status: 'zu_erledigen', zaehlt: false, wert: null, projekt_id: S.f.projekt !== 'alle' ? S.f.projekt : 'usa', mail_status: null, betonline: false, stake: false, zustaendig: '', notiz: '' } : S.personen.find(x => x.id === id);
   if (!p) return;
   const name = h('input', { id: 'd-name', value: p.name, maxlength: 200, autocomplete: 'off', autocapitalize: 'words', placeholder: 'optional, Vor- und Nachname' });
   const anr = h('input', { id: 'd-anr', value: p.adressnummer || '', maxlength: 40, autocomplete: 'off', autocapitalize: 'off', placeholder: 'eigene Nummer, optional' });
@@ -681,7 +694,7 @@ function personSheet(id) {
     const neuF = { name: nm, adressnummer: anr.value.trim(), state: st.value || null, nummer: nummer.value.trim(), email: email.value.trim(), adresse: adresse.value.trim(), status: status.value, zaehlt: haken.checked, wert: wz, projekt: projSel.value, mail_status: mailWahl || null, betonline: bet, stake: stk, zustaendig: zust.value.trim(), notiz: notiz.value.trim() };
     if (!istAdmin()) { delete neuF.zaehlt; delete neuF.wert; }
     let felder = {};
-    if (neu) { for (const [k, v] of Object.entries(neuF)) if (v !== '' && v !== null && !(['zaehlt', 'betonline', 'stake'].includes(k) && v === false) && !(k === 'status' && v === 'leer')) felder[k] = v; }
+    if (neu) { for (const [k, v] of Object.entries(neuF)) if (v !== '' && v !== null && !(['zaehlt', 'betonline', 'stake'].includes(k) && v === false) && !(k === 'status' && v === 'zu_erledigen')) felder[k] = v; }
     else {
       for (const [k, v] of Object.entries(neuF)) { const o0 = p[k === 'projekt' ? 'projekt_id' : k]; const o = o0 == null ? (['zaehlt', 'betonline', 'stake'].includes(k) ? false : '') : o0; const n = v == null ? '' : v; if (o !== n) felder[k] = v; }
       if (!Object.keys(felder).length) { sh.__close(); return; }
@@ -831,47 +844,91 @@ function oeffneProjekt(id) {
   S.f = { ...S.f, projekt: id, status: 'alle', q: '', state: 'alle', haken: 'alle', mail: 'alle', konto: 'alle' };
   S.ansicht = 'liste'; aufbau();
 }
-function zumStart() { schliesseAlle(); S.ansicht = 'start'; aufbau(); }
+function zumStart() { schliesseAlle(); S.ansicht = 'start'; S._startAnim = true; aufbau(); }
+function gruss() { const hh = new Date().getHours(); return hh < 5 ? 'Gute Nacht' : hh < 11 ? 'Guten Morgen' : hh < 18 ? 'Guten Tag' : 'Guten Abend'; }
+/* Zahl sanft hochzaehlen (nur wenn Bewegung erwuenscht ist) */
+function zaehlAnim(el, ziel, fmt, an) {
+  if (!an) { el.textContent = fmt(ziel); return; }
+  const t0 = performance.now(), dauer = 800; el.textContent = fmt(0);
+  const schritt = t => { const k = Math.min(1, (t - t0) / dauer), e = 1 - Math.pow(1 - k, 3); el.textContent = fmt(ziel * e); if (k < 1 && el.isConnected) requestAnimationFrame(schritt); else el.textContent = fmt(ziel); };
+  requestAnimationFrame(schritt);
+}
 function startAufbau() {
   const app = $('#app'); app.textContent = '';
-  const P = S.personen, an = P.filter(zaehltJetzt), wartet = P.filter(p => p.zaehlt && !stufeReicht(p));
+  const P = S.personen, adm = istAdmin(), an = P.filter(zaehltJetzt), wartet = P.filter(p => p.zaehlt && !stufeReicht(p));
+  const bewegung = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches), anim = bewegung && S._startAnim !== false; S._startAnim = false;
+  let n = 0; const rise = el => { if (anim) { el.classList.add('rise'); el.style.setProperty('--i', n++); } return el; };
+  const zaehler = [];
+  const zahl = (ziel, fmt) => { const sp = h('span', { text: fmt(ziel) }); zaehler.push(() => zaehlAnim(sp, ziel, fmt, anim)); return sp; };
+  const ganz = v => String(Math.round(v));
+
   const karte = pr => {
     const a = P.filter(p => p.projekt_id === pr.id), ang = a.filter(zaehltJetzt);
     const er = a.filter(p => p.mail_status === 'erhalten').length, es = a.filter(p => p.mail_status === 'erstellt').length;
-    return h('div', { class: 'pwrap' },
+    return rise(h('div', { class: 'pwrap' },
       h('button', { class: 'pcard', type: 'button', onclick: () => oeffneProjekt(pr.id), 'aria-label': pr.name + ': ' + a.length + (a.length === 1 ? ' Person' : ' Personen') },
         projektSymbol(pr, 'big'),
         h('div', { class: 'pc-t' }, h('strong', { text: pr.name }), h('span', { class: 'pc-s', text: a.length + (a.length === 1 ? ' Person' : ' Personen') })),
-        istAdmin() ? h('div', { class: 'pc-m' }, h('b', { text: eur(summe(ang)) }), h('small', { text: 'angekommen' })) : null,
+        adm ? h('div', { class: 'pc-m' }, h('b', { text: eur(summe(ang)) }), h('small', { text: 'angekommen' })) : null,
         h('div', { class: 'pc-k', text: es + (es === 1 ? ' Mail' : ' Mails') + ' erstellt, ' + er + ' erhalten' })),
-      h('button', { class: 'pc-edit', type: 'button', 'aria-label': pr.name + ' bearbeiten', title: 'Bearbeiten', onclick: () => projektSheet(pr) }, ic('edit')));
+      h('button', { class: 'pc-edit', type: 'button', 'aria-label': pr.name + ' bearbeiten', title: 'Bearbeiten', onclick: () => projektSheet(pr) }, ic('edit'))));
   };
-  const alle = h('button', { class: 'pcard alle', type: 'button', onclick: () => oeffneProjekt('alle'), 'aria-label': 'Alle Personen: ' + P.length },
+  const alle = rise(h('button', { class: 'pcard alle', type: 'button', onclick: () => oeffneProjekt('alle'), 'aria-label': 'Alle Personen: ' + P.length },
     h('span', { class: 'psym emoji big' }, ic('people')),
     h('div', { class: 'pc-t' }, h('strong', { text: 'Alle Personen' }), h('span', { class: 'pc-s', text: P.length + (P.length === 1 ? ' Person' : ' Personen') + ' in allen Projekten' })),
-    istAdmin() ? h('div', { class: 'pc-m' }, h('b', { text: eur(summe(an)) }), h('small', { text: 'angekommen' })) : null,
-    h('div', { class: 'pc-k', text: 'Kein Name und keine Mail kommt doppelt vor' }));
-  const neuK = h('button', { class: 'pcard neu', type: 'button', onclick: () => projektSheet(null), 'aria-label': 'Projekt erstellen' },
+    adm ? h('div', { class: 'pc-m' }, h('b', { text: eur(summe(an)) }), h('small', { text: 'angekommen' })) : null,
+    h('div', { class: 'pc-k', text: 'Kein Name und keine Mail kommt doppelt vor' })));
+  const neuK = rise(h('button', { class: 'pcard neu', type: 'button', onclick: () => projektSheet(null), 'aria-label': 'Projekt erstellen' },
     h('span', { class: 'psym emoji big plus' }, ic('plus')),
-    h('div', { class: 'pc-t' }, h('strong', { text: 'Projekt erstellen' }), h('span', { class: 'pc-s', text: 'Name und Bild, in Sekunden' })));
+    h('div', { class: 'pc-t' }, h('strong', { text: 'Projekt erstellen' }), h('span', { class: 'pc-s', text: 'Name und Bild, in Sekunden' }))));
   const alleAehn = [...aehnlichkeiten().values()];
   const doppelt = alleAehn.filter(l => l.some(x => x.art === 'exakt')).length, aehn = alleAehn.filter(l => !l.some(x => x.art === 'exakt')).length;
+
+  // Kopf: Begruessung, Datum, grosse Zahl
+  const vorname = String(S.me.name).trim().split(/\s+/)[0];
+  const hero = rise(h('section', { class: 'hero' },
+    h('div', { class: 'hero-t' },
+      h('h2', { text: gruss() + ', ' + vorname }),
+      h('p', { text: new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }) + ' · ' + P.length + (P.length === 1 ? ' Person' : ' Personen') + ' in ' + S.projekte.length + (S.projekte.length === 1 ? ' Projekt' : ' Projekten') })),
+    adm ? h('button', { class: 'hero-n', type: 'button', onclick: () => uebersichtSheet(), 'aria-label': 'Gewinn gemeinsam, Übersicht öffnen' },
+      h('span', { class: 'g-l', text: 'Gewinn gemeinsam, alle Projekte' }),
+      h('b', null, zahl(summe(an), eur)),
+      h('span', { class: 'g-s', text: an.length + (an.length === 1 ? ' Person' : ' Personen') + ' angekommen' + (wartet.length ? ', ' + eur(summe(wartet)) + ' warten noch' : '') }))
+      : h('div', { class: 'hero-n plain' }, h('span', { class: 'g-l', text: 'Personen in allen Projekten' }), h('b', null, zahl(P.length, ganz)), h('span', { class: 'g-s', text: 'Du siehst die Personen und ihre Konten.' }))));
+
+  // Kennzahlen (nur Desktop)
+  const kacheln = [['Personen', P.length, 'k-pers'], ['Mails erstellt', P.filter(p => p.mail_status === 'erstellt').length, 'k-es'], ['Mails erhalten', P.filter(p => p.mail_status === 'erhalten').length, 'k-er'], ['Bet Online', P.filter(p => p.betonline).length, 'k-bo'], ['Stake', P.filter(p => p.stake).length, 'k-st']];
+  const stats = rise(h('div', { class: 'st-grid desk-only' }, ...kacheln.map(([l, v, k]) => h('div', { class: 'st-tile ' + k }, h('span', { class: 'st-l', text: l }), h('b', null, zahl(v, ganz))))));
+  // Stufen als farbiger Balken
+  const bar = h('div', { class: 'sbar', role: 'img', 'aria-label': 'Verteilung der Stufen' });
+  STATUS.forEach(s => { const c = P.filter(p => p.status === s.k).length; if (c) { const seg = h('span', { class: 'sb-seg sb-' + s.k, title: s.l + ': ' + c }); seg.style.flexGrow = c; bar.append(seg); } });
+  const stufen = rise(h('div', { class: 'stufen desk-only' }, h('div', { class: 'sb-kopf', text: 'Stufen' }), bar,
+    h('div', { class: 'sb-leg' }, ...STATUS.map(s => h('span', null, h('i', { class: 'sw-dot ' + s.k }), s.l + ' ' + P.filter(p => p.status === s.k).length)))));
+  // Zuletzt bearbeitet
+  const neu = P.slice().sort((a, b) => (b.geaendert || '').localeCompare(a.geaendert || '')).slice(0, 6);
+  const zuletzt = rise(h('aside', { class: 'recent desk-only' }, h('div', { class: 'sb-kopf', text: 'Zuletzt bearbeitet' }),
+    ...(neu.length ? neu.map(p => h('button', { class: 'rc', type: 'button', onclick: () => personSheet(p.id) },
+      projektSymbol(projektVon(p.projekt_id), 'mini'),
+      h('span', { class: 'rc-t' }, h('strong', { text: titel(p) }), h('small', { text: (p.geaendert_von ? 'von ' + p.geaendert_von + ', ' : '') + rel(p.geaendert) })))) : [h('p', { class: 'hint', text: 'Noch nichts bearbeitet.' })])));
+
   app.append(
     h('header', { class: 'start-top' },
       h('div', { class: 'start-brand' }, logoImg(36), h('div', null, h('h1', { text: 'Adress-Tracker' }), h('div', { class: 'sub', id: 'sub' }))),
       h('div', { class: 'start-actions' },
-        istAdmin() ? h('button', { class: 'btn', type: 'button', onclick: uebersichtSheet }, ic('sum'), h('span', { class: 'lbl', text: 'Übersicht' })) : null,
+        adm ? h('button', { class: 'btn', type: 'button', onclick: uebersichtSheet }, ic('sum'), h('span', { class: 'lbl', text: 'Übersicht' })) : null,
         h('button', { class: 'ibtn', 'aria-label': 'Mehr', onclick: ev => hauptmenue(ev.currentTarget) }, ic('more')),
-        h('button', { class: 'side-me compact', onclick: profilSheet, 'aria-label': 'Profil öffnen' }, avatar(S.me.name)))),
+        h('button', { class: 'side-me compact', onclick: profilSheet, 'aria-label': 'Profil öffnen' }, avatar(S.me.name, false, S.me)))),
     h('main', { class: 'start' },
-      istAdmin() ? h('button', { class: 'gesamt', type: 'button', onclick: () => uebersichtSheet(), 'aria-label': 'Gewinn gemeinsam, Übersicht öffnen' },
-        h('div', { class: 'g-l', text: 'Gewinn gemeinsam, alle Projekte zusammen' }),
-        h('div', { class: 'g-n', text: eur(summe(an)) }),
-        h('div', { class: 'g-s', text: an.length + (an.length === 1 ? ' Person' : ' Personen') + ' angekommen' + (wartet.length ? ', ' + eur(summe(wartet)) + ' warten noch' : '') })) : null,
-      h('h2', { class: 'start-h', text: 'Projekte' }),
-      h('div', { class: 'pgrid' }, ...S.projekte.map(karte), alle, neuK),
-      (doppelt || aehn) ? h('p', { class: 'start-sum' }, doppelt ? doppelt + ' Personen haben einen doppelten Namen oder eine doppelte Mail. ' : '', aehn ? aehn + ' Personen haben einen sehr ähnlichen Namen oder eine sehr ähnliche Mail (blau markiert in der Liste).' : '') : null));
+      hero,
+      h('div', { class: 'start-grid' },
+        h('div', { class: 'start-main' },
+          stats,
+          h('h2', { class: 'start-h', text: 'Projekte' }),
+          h('div', { class: 'pgrid' }, ...S.projekte.map(karte), alle, neuK),
+          (doppelt || aehn) ? h('p', { class: 'start-sum' }, doppelt ? doppelt + ' Personen haben einen doppelten Namen oder eine doppelte Mail. ' : '', aehn ? aehn + ' Personen haben einen sehr ähnlichen Namen oder eine sehr ähnliche Mail (blau markiert in der Liste).' : '') : null),
+        h('div', { class: 'start-side' }, stufen, zuletzt))));
   setSub();
+  zaehler.forEach(f => f());
 }
 
 /* ---------- Projekt erstellen und bearbeiten */
@@ -1319,14 +1376,34 @@ function profilSheet() {
     catch (e) { err.textContent = fehlertext(e); ev.target.disabled = false; }
   };
   name.addEventListener('keydown', e => { if (e.key === 'Enter') speichern({ target: name }); });
+  const profKopf = h('div', { class: 'prof' });
+  const zeigeKopf = () => { profKopf.textContent = ''; profKopf.append(avatar(S.me.name, true, S.me), h('strong', { text: S.me.name }), h('span', { class: 'pill' + (admin ? ' adm' : ''), text: S.me.inhaber ? 'Inhaber' : admin ? 'Admin' : 'Mitarbeiter' })); };
+  const farbRaster = h('div', { class: 'swatches', role: 'group', 'aria-label': 'Farbe für dein Profil' });
+  const zeigeFarben = () => { farbRaster.textContent = ''; AVATAR_FARBEN.forEach(([k, l]) => farbRaster.append(h('button', { class: 'sw-c fb-' + k, type: 'button', title: l, 'aria-label': l, 'aria-pressed': String(S.me.avatar_farbe === k), onclick: () => avatarSpeichern(k, S.me.avatar_bild || null) }))); };
+  const bildDatei = h('input', { type: 'file', accept: 'image/*', hidden: true, 'aria-label': 'Profilbild wählen' });
+  async function avatarSpeichern(farbe, bild) {
+    err.textContent = '';
+    try {
+      const r = await rpc('tr_profil_avatar', { p_code: S.code, p_farbe: farbe, p_bild: bild });
+      S.me.avatar_farbe = r.avatar_farbe; S.me.avatar_bild = r.avatar_bild; zeigeKopf(); zeigeFarben(); aufbau();
+    } catch (e) { err.textContent = fehlertext(e); }
+  }
+  bildDatei.addEventListener('change', async () => {
+    const f = bildDatei.files[0]; bildDatei.value = ''; if (!f) return;
+    try { const d = await bildQuadrat(f, 128); if (!d) throw new Error('bild'); await avatarSpeichern(S.me.avatar_farbe || null, d); }
+    catch (e) { err.textContent = 'Das Foto konnte nicht gelesen werden. Bitte ein anderes nehmen.'; }
+  });
+  zeigeKopf(); zeigeFarben();
   const body = h('div', { class: 'sheet-b' },
-    h('div', { class: 'prof' }, avatar(S.me.name, true), h('strong', { text: S.me.name }), h('span', { class: 'pill' + (admin ? ' adm' : ''), text: admin ? 'Admin' : 'Mitarbeiter' })),
+    profKopf,
+    h('div', { class: 'avbar' }, h('button', { class: 'btn', type: 'button', text: 'Foto wählen', onclick: () => bildDatei.click() }), h('button', { class: 'btn', type: 'button', text: 'Foto entfernen', onclick: () => avatarSpeichern(S.me.avatar_farbe || null, null) }), bildDatei),
+    h('div', null, h('div', { class: 'fg-t', text: 'Farbe' }), farbRaster),
     h('div', { class: 'fg' }, frow('Name', name)),
     h('button', { class: 'btn', text: 'Namen speichern', onclick: speichern }),
     h('p', { class: 'hint', text: 'Dein Name steht bei jeder Änderung, die du machst. Alle Angemeldeten sehen dieselbe Liste, Änderungen erscheinen bei allen nach wenigen Sekunden. Teilen sich mehrere Leute einen Zugang, gilt der Name für alle.' }),
     ...(istAdmin() ? einstellungenBlock(err) : []),
     admin ? h('div', { class: 'kbar' },
-      h('button', { class: 'btn', text: 'Leute hinzufügen', onclick: () => { sh.__close(); zugaengeSheet(); } }),
+      h('button', { class: 'btn', text: 'Admin-Portal', onclick: () => { sh.__close(); zugaengeSheet(); } }),
       h('button', { class: 'btn', text: 'Neuer Schlüssel für mich', onclick: async (ev) => {
         err.textContent = ''; ev.target.disabled = true;
         try { const res = await rpc('tr_zugang_aendern', { p_code: S.code, p_id: S.me.id, p_aktion: 'neuer_code' }); S.code = res.code; store(res.code); zeigeSchluessel(out, S.me.name, res.code, true); }
@@ -1339,13 +1416,13 @@ function profilSheet() {
 }
 
 /* ---------- Zugaenge und Protokoll (Admin) */
-const AKTION = { neu: 'Person angelegt', aendern: 'Person geändert', loeschen: 'Person gelöscht', import: 'Liste eingespielt', einrichten: 'Einrichtung', zugang_neu: 'Zugang angelegt', zugang_gesperrt: 'Zugang gesperrt', zugang_entsperrt: 'Zugang entsperrt', zugang_neuer_code: 'Neuer Schlüssel', zugang_admin: 'Zum Admin gemacht', zugang_mitarbeiter: 'Zum Mitarbeiter gemacht', profil: 'Name geändert', zugang_umbenannt: 'Zugang umbenannt', einstellung: 'Einstellung geändert', datei_neu: 'Datei hinzugefügt', datei_weg: 'Datei gelöscht', projekt_neu: 'Projekt angelegt', projekt_aendern: 'Projekt geändert', projekt_weg: 'Projekt gelöscht' };
+const AKTION = { neu: 'Person angelegt', aendern: 'Person geändert', loeschen: 'Person gelöscht', import: 'Liste eingespielt', einrichten: 'Einrichtung', zugang_neu: 'Zugang angelegt', zugang_gesperrt: 'Zugang gesperrt', zugang_entsperrt: 'Zugang entsperrt', zugang_neuer_code: 'Neuer Schlüssel', zugang_admin: 'Zum Admin gemacht', zugang_mitarbeiter: 'Zum Mitarbeiter gemacht', profil: 'Name geändert', zugang_umbenannt: 'Zugang umbenannt', zugang_geloescht: 'Zugang gelöscht', einstellung: 'Einstellung geändert', datei_neu: 'Datei hinzugefügt', datei_weg: 'Datei gelöscht', projekt_neu: 'Projekt angelegt', projekt_aendern: 'Projekt geändert', projekt_weg: 'Projekt gelöscht' };
 function zugaengeSheet() {
   const body = h('div', { class: 'sheet-b' });
   let tab = 'zugang';
-  const t1 = h('button', { role: 'tab', text: 'Wer hat Zugang', onclick: () => { tab = 'zugang'; fuell(); } });
+  const t1 = h('button', { role: 'tab', text: 'Zugänge', onclick: () => { tab = 'zugang'; fuell(); } });
   const t2 = h('button', { role: 'tab', text: 'Protokoll', onclick: () => { tab = 'protokoll'; fuell(); } });
-  const sh = sheetEl('Zugänge', body, { wide: true, right: h('button', { class: 'tbtn strong', text: 'Fertig', onclick: () => sh.__close() }) });
+  const sh = sheetEl('Admin-Portal', body, { wide: true, right: h('button', { class: 'tbtn strong', text: 'Fertig', onclick: () => sh.__close() }) });
   oeffne(sh, true);
   async function fuell() {
     t1.setAttribute('aria-selected', String(tab === 'zugang')); t2.setAttribute('aria-selected', String(tab === 'protokoll'));
@@ -1354,8 +1431,9 @@ function zugaengeSheet() {
       if (tab === 'zugang') {
         const z = await rpc('tr_zugaenge', { p_code: S.code });
         body.textContent = ''; body.append(h('div', { class: 'segc', role: 'tablist' }, t1, t2));
+        const ich = S.me || {}, inh = !!ich.inhaber;
         const nm = h('input', { id: 'z-name', placeholder: 'Name der Person', maxlength: 100, autocomplete: 'off', autocapitalize: 'words', 'aria-label': 'Name der Person' });
-        const ro = h('select', { id: 'z-rolle', 'aria-label': 'Rolle' }, h('option', { value: 'mitarbeiter', text: 'Mitarbeiter (ohne Geld)' }), h('option', { value: 'admin', text: 'Admin (sieht auch Geld)' }));
+        const ro = h('select', { id: 'z-rolle', 'aria-label': 'Rolle' }, h('option', { value: 'mitarbeiter', text: 'Mitarbeiter (ohne Geld)' }), ...(inh ? [h('option', { value: 'admin', text: 'Admin (sieht auch Geld)' })] : []));
         const out = h('div', { 'data-out': '' }); const er = h('p', { class: 'err' });
         const anlegen = async (ev) => {
           er.textContent = ''; if (!nm.value.trim()) { er.textContent = 'Bitte einen Namen eintragen.'; nm.focus(); return; }
@@ -1363,30 +1441,41 @@ function zugaengeSheet() {
           try { const r = await rpc('tr_zugang_anlegen', { p_code: S.code, p_name: nm.value.trim(), p_rolle: ro.value }); await fuell(); zeigeSchluessel(body.querySelector('[data-out]'), r.name, r.code); }
           catch (e) { er.textContent = fehlertext(e); ev.target.disabled = false; }
         };
-        const addBtn = h('button', { class: 'btn pri', text: 'Person hinzufügen', onclick: anlegen });
+        const addBtn = h('button', { class: 'btn pri', text: 'Zugang hinzufügen', onclick: anlegen });
         nm.addEventListener('keydown', e => { if (e.key === 'Enter') anlegen({ target: addBtn }); });
         body.append(
-          h('div', { class: 'fg-t', text: 'Person hinzufügen' }),
+          h('div', { class: 'fg-t', text: 'Zugang hinzufügen' }),
           h('div', { class: 'fg' }, frow('Name', nm), frow('Rolle', ro)),
           addBtn, er, out,
-          h('p', { class: 'hint', text: 'Admin sieht und ändert alles, auch alle Euro-Beträge, den Gewinn, Übersicht und Wert und das PDF. Mitarbeiter sieht und bearbeitet nur die Personen und ihre Konten, ohne Geld. Die Rolle änderst du unten mit "Zu Admin" oder "Zu Mitarbeiter".' }),
-          h('p', { class: 'hint', text: 'Du bekommst einen persönlichen Link für diese Person. Er wird nur einmal angezeigt. Wer ihn öffnet, ist sofort angemeldet und sieht dieselbe Liste wie alle anderen.' }),
-          h('div', { class: 'fg-t', text: 'Wer hat Zugang' }));
+          h('p', { class: 'hint', text: 'Admin sieht und ändert alles, auch alle Euro-Beträge, den Gewinn, Übersicht und Wert und das PDF. Mitarbeiter sieht und bearbeitet nur die Personen und ihre Konten, ohne Geld. ' + (inh ? 'Als Inhaber ernennst du Admins und stufst sie herab. Dich selbst kann niemand herabstufen, sperren oder löschen.' : 'Du bist Admin, aber nicht Inhaber: Du verwaltest Mitarbeiter. Admins ernennt und verwaltet nur der Inhaber.') }),
+          h('p', { class: 'hint', text: 'Du bekommst einen persönlichen Link für diesen Zugang. Er wird nur einmal angezeigt. Wer ihn öffnet, ist sofort angemeldet und sieht dieselbe Liste wie alle anderen.' }),
+          h('div', { class: 'fg-t', text: 'Zugänge' }));
         const grp = h('div', { class: 'fg' });
-        z.forEach(r => grp.append(h('div', { class: 'prow' },
-          h('div', { class: 'prow-top' }, avatar(r.name),
-            h('div', { class: 'prow-t' }, h('strong', { text: r.name }), h('small', { text: 'Seit ' + new Date(r.erstellt).toLocaleDateString('de-DE') + ', zuletzt online ' + rel(r.zuletzt_gesehen) + (r.rolle === 'admin' ? ' · sieht Geld und Übersicht' : ' · nur Personen und Konten, kein Geld') })),
-            h('span', { class: 'pill' + (r.rolle === 'admin' ? ' adm' : ''), text: r.rolle === 'admin' ? 'Admin' : 'Mitarbeiter' }),
-            h('span', { class: 'pill ' + (r.gesperrt ? 'bad' : 'ok'), text: r.gesperrt ? 'Gesperrt' : 'Aktiv' })),
-          h('div', { class: 'prow-actions' },
-            h('button', { class: 'btn sm', text: r.gesperrt ? 'Entsperren' : 'Sperren', onclick: () => aendern(r, r.gesperrt ? 'entsperren' : 'sperren') }),
-            h('button', { class: 'btn sm', text: r.rolle === 'admin' ? 'Zu Mitarbeiter' : 'Zu Admin', onclick: async () => {
-              try {
-                await rpc('tr_zugang_rolle', { p_code: S.code, p_id: r.id, p_rolle: r.rolle === 'admin' ? 'mitarbeiter' : 'admin' });
-                if (S.me && r.id === S.me.id) { sh.__close(); await laden(true); } else await fuell();
-              } catch (e) { toast(fehlertext(e), true); }
-            } }),
-            h('button', { class: 'btn sm', text: 'Neuer Schlüssel', onclick: () => aendern(r, 'neuer_code') })))));
+        z.forEach(r => {
+          const selbst = r.id === ich.id, adminZiel = r.rolle === 'admin';
+          const darfAnfassen = !r.inhaber && (inh || !adminZiel);        // Sperren, Löschen
+          const darfSchluessel = selbst || darfAnfassen;                   // neuer Schlüssel
+          let armed = false;
+          const aktionen = [];
+          if (darfAnfassen && !selbst) aktionen.push(h('button', { class: 'btn sm', text: r.gesperrt ? 'Entsperren' : 'Sperren', onclick: () => aendern(r, r.gesperrt ? 'entsperren' : 'sperren') }));
+          if (inh && !r.inhaber) aktionen.push(h('button', { class: 'btn sm', text: adminZiel ? 'Zu Mitarbeiter' : 'Zu Admin', onclick: async () => {
+            try { await rpc('tr_zugang_rolle', { p_code: S.code, p_id: r.id, p_rolle: adminZiel ? 'mitarbeiter' : 'admin' }); await fuell(); }
+            catch (e) { toast(fehlertext(e), true); }
+          } }));
+          if (darfSchluessel) aktionen.push(h('button', { class: 'btn sm', text: 'Neuer Schlüssel', onclick: () => aendern(r, 'neuer_code') }));
+          if (darfAnfassen && !selbst) aktionen.push(h('button', { class: 'btn sm red', text: 'Löschen', onclick: async ev => {
+            if (!armed) { armed = true; ev.target.textContent = 'Wirklich löschen? Nochmal tippen'; return; }
+            ev.target.disabled = true;
+            try { await rpc('tr_zugang_loeschen', { p_code: S.code, p_id: r.id }); toast('Zugang gelöscht'); await fuell(); }
+            catch (e) { toast(fehlertext(e), true); ev.target.disabled = false; armed = false; ev.target.textContent = 'Löschen'; }
+          } }));
+          grp.append(h('div', { class: 'prow' },
+            h('div', { class: 'prow-top' }, avatar(r.name, false, r),
+              h('div', { class: 'prow-t' }, h('strong', { text: r.name }), h('small', { text: 'Seit ' + new Date(r.erstellt).toLocaleDateString('de-DE') + ', zuletzt online ' + rel(r.zuletzt_gesehen) + (adminZiel ? ' · sieht Geld und Übersicht' : ' · nur Personen und Konten, kein Geld') })),
+              r.inhaber ? h('span', { class: 'pill inh', text: 'Inhaber' }) : h('span', { class: 'pill' + (adminZiel ? ' adm' : ''), text: adminZiel ? 'Admin' : 'Mitarbeiter' }),
+              h('span', { class: 'pill ' + (r.gesperrt ? 'bad' : 'ok'), text: r.gesperrt ? 'Gesperrt' : 'Aktiv' })),
+            aktionen.length ? h('div', { class: 'prow-actions' }, ...aktionen) : h('p', { class: 'hint', text: r.inhaber ? 'Geschützt: Der Inhaber kann nicht herabgestuft, gesperrt oder gelöscht werden.' : 'Diesen Admin verwaltet nur der Inhaber.' })));
+        });
         body.append(grp);
         async function aendern(r, aktion) {
           try {
