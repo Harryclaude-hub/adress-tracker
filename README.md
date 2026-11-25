@@ -3,8 +3,8 @@
 Gemeinsame Liste fuer Personen mit State, Nummer, E-Mail, zugeteilter Adresse und Adressnummer. Stufen von Hand (Leer, Zu erledigen,
 Erledigt, Uebernommen, Test), Dateien und Fotos je Person, ein Wert in Euro je Person (Standard einstellbar) mit "Dazurechnen" und eine
 Uebersicht, was schon angekommen ist. Startbildschirm mit Projekten (USA, Bangladesch, Finnland, weitere selbst anlegen mit Flagge, Emoji oder Foto), der Gewinn ist ueber alle
-Projekte gemeinsam. Kein Name und keine Mail darf in der ganzen Datenbank doppelt
-vorkommen, aehnliche Namen werden blau gezeigt. Mail-Status (erhalten, erstellt) und Konten (Bet Online, Stake).
+Projekte gemeinsam. Kein Name darf in der ganzen Datenbank doppelt
+vorkommen. Eine erhaltene Mail geht nur bei einem Eintrag, eine selbst erstellte bei hoechstens zwei (Bet Online getrennt von Stake), aehnliche Namen werden blau gezeigt. Mail-Status (erhalten, erstellt) und Konten (Bet Online, Stake).
 Alles Geldtechnische (Wert, Gewinn, Uebersicht, PDF-Export) sieht nur ein Admin, ein Mitarbeiter sieht nur Personen und Konten.
 Admin-Portal: Zugaenge anlegen, sperren und loeschen, Rollen vergeben. Der Inhaber (erster Admin) ist geschuetzt. Jeder kann Profilbild und Farbe waehlen.
 Der Test `supabase/tests/geld_und_admin_test.sql` prueft Geld-Sichtbarkeit und Admin-Regeln mit erfundenen Daten.

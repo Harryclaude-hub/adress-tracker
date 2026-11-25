@@ -14,6 +14,7 @@
 
 Aufbau: Eine Seite ohne Build (`index.html`, `app.js`, `stil.css`), Daten im Supabase-Projekt "Adress-Tracker"
 (`rsthdilxubmefulnthgc`). Zugriff nur ueber `public.tr_*` Funktionen (`supabase/migrations`, 001 bis 005 gelten,
-006 ist durch 007 zurueckgenommen, 008 Name optional, 009 und 010 Stufen von Hand, 011 Dateien je Person, Wert und Einstellungen, 012 Dateischutz, 013 Projekte, Eindeutigkeit, Konten, 014 Konten-Regel nur bei erhaltener Mail, 015 Geld nur fuer Admins, Import entfernt, 016 Admin-Portal, Profilbild, Standardstufe, Mail-Status Pflicht).
+006 ist durch 007 zurueckgenommen, 008 Name optional, 009 und 010 Stufen von Hand, 011 Dateien je Person, Wert und Einstellungen, 012 Dateischutz, 013 Projekte, Eindeutigkeit, Konten, 014 Konten-Regel nur bei erhaltener Mail, 015 Geld nur fuer Admins, Import entfernt, 016 Admin-Portal, Profilbild, Standardstufe, Mail-Status Pflicht, 017 Mails teilen).
 - Nach jeder Aenderung an Funktionen, die Personendaten liefern: `supabase/tests/geld_und_admin_test.sql` laufen lassen (Probelauf mit erfundenen Daten,
   endet absichtlich mit einem Fehler und rollt alles zurueck). Jede Zeile muss `ok` sagen. Er beweist, dass ein Mitarbeiter kein Geld bekommt.
+- Nach jeder Aenderung an Personen- oder Mail-Regeln auch `supabase/tests/mail_teilen_test.sql` laufen lassen (gleiche Art wie der Geld-Test).
