@@ -5,6 +5,8 @@ Erledigt, Uebernommen, Test), Dateien und Fotos je Person, ein Wert in Euro je P
 Uebersicht, was schon angekommen ist. Startbildschirm mit Projekten (USA, Bangladesch, Finnland, weitere selbst anlegen mit Flagge, Emoji oder Foto), der Gewinn ist ueber alle
 Projekte gemeinsam. Kein Name darf in der ganzen Datenbank doppelt
 vorkommen. Eine erhaltene Mail geht nur bei einem Eintrag, eine selbst erstellte bei hoechstens zwei (Bet Online getrennt von Stake), aehnliche Namen werden blau gezeigt. Mail-Status (erhalten, erstellt) und Konten (Bet Online, Stake).
+Beim Tippen der Mail werden noch offene Mails vorgeschlagen. Fehlt bei einem alten Eintrag der Status, fragt die Seite danach.
+Dateien zieht man irgendwo auf die Seite (offene Person oder Zeile in der Liste) oder fuegt sie mit Strg+V oder dem Einfuege-Knopf ein.
 Alles Geldtechnische (Wert, Gewinn, Uebersicht, PDF-Export) sieht nur ein Admin, ein Mitarbeiter sieht nur Personen und Konten.
 Admin-Portal: Zugaenge anlegen, sperren und loeschen, Rollen vergeben. Der Inhaber (erster Admin) ist geschuetzt. Jeder kann Profilbild und Farbe waehlen.
 Der Test `supabase/tests/geld_und_admin_test.sql` prueft Geld-Sichtbarkeit und Admin-Regeln mit erfundenen Daten.

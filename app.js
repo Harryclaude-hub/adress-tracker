@@ -175,7 +175,7 @@ const FEHLER = {
   mail_status_fehlt: 'Bitte den Mail-Status wählen: Erhalten oder Erstellt.',
   avatar_ungueltig: 'Das Profilbild oder die Farbe ist ungültig.',
   name_doppelt: 'Diesen Namen gibt es schon (in irgendeinem Projekt). Kein Name darf doppelt vorkommen.',
-  mail_doppelt: 'Diese Mail gibt es schon bei einem anderen Eintrag. Eine erhaltene Mail geht nur einmal. Nur selbst erstellte Mails können zweimal vorkommen.',
+  mail_doppelt: 'Diese Mail gibt es schon bei einem anderen Eintrag. Das geht nur, wenn sie dort und hier als selbst erstellt steht.',
   mail_voll: 'Diese Mail ist schon voll: Sie steht bei zwei Einträgen oder beide Konten sind vergeben.',
   mail_konto_belegt: 'Bet Online oder Stake ist mit dieser Mail schon bei einem anderen Eintrag angelegt.',
   stake_gesperrt: 'Bei einer erhaltenen Mail geht Stake nicht mehr, wenn Bet Online schon gesetzt ist.',
@@ -439,7 +439,7 @@ function zeichne() {
       h('button', { class: 'btn', text: 'Filter zurücksetzen', onclick: () => { S.f = { status: 'alle', q: '', state: 'alle', haken: 'alle', projekt: S.f.projekt, mail: 'alle', konto: 'alle', sort: S.f.sort }; $('#q').value = ''; zeichne(); } }))));
     return;
   }
-  const grp = h('div', { class: 'group' }, h('div', { class: 'colhead' }, h('span'), h('span', { text: 'Person' }), h('span', { text: 'State' }), h('span', { text: 'Konten' }), h('span', { text: 'Stufe' }), h('span', { text: 'Zuletzt' })));
+  const grp = h('div', { class: 'group' }, h('div', { class: 'colhead' }, h('span'), ...[['main', 'Person'], ['kontakt', 'E-Mail und Nummer'], ['adr', 'State und Adresse'], ['konten', 'Mail und Konten'], ['status', 'Stufe'], ['last', 'Zuletzt']].map(([k, t]) => h('span', { class: 'h-' + k, text: t }))));
   rows.forEach(p => grp.append(zeile(p)));
   box.append(grp, h('div', { class: 'foot', text: rows.length + ' von ' + inP.length + ' angezeigt' + (istAdmin() ? ', ' + inP.filter(p => p.zaehlt).length + ' dazugerechnet' : '') }));
 }
@@ -449,22 +449,22 @@ function aehnTag(p) {
   return h('span', { class: 'tag ' + (ex ? 'rot' : 'blue'), title: am.map(x => (x.art === 'exakt' ? 'Gleiche' + (x.was === 'Name' ? 'r Name' : ' E-Mail') : 'Ähnliche' + (x.was === 'Name' ? 'r Name' : ' E-Mail')) + ' wie ' + titel(x.p) + ' (' + projektTitel(x.p.projekt_id) + ')').join('; '), text: ex ? 'Doppelt' : 'Ähnlich' });
 }
 function zeile(p) {
-  const tv = titelVon(p);
+  const tv = titelVon(p), name = (p.name || '').trim();
   const stsel = h('select', { class: 'pillsel', 'data-s': p.status, 'aria-label': 'Stufe von ' + tv.t, onchange: e => quick(p.id, { status: e.target.value }) },
     ...STATUS.map(s => h('option', { value: s.k, text: s.l })));
   stsel.value = p.status;
-  const sub = h('div', { class: 'subline' },
-    tv.k === 'nummer' ? null : p.nummer ? h('span', { class: 'ph', text: p.nummer }) : h('span', { class: 'none', text: 'Nummer fehlt' }),
-    tv.k === 'email' ? null : p.email ? h('span', { text: p.email }) : h('span', { class: 'none', text: 'E-Mail fehlt' }),
-    mailTeilTag(p),
-    p.adresse && tv.k !== 'adresse' ? h('span', { text: p.adresse }) : null,
-    p.zustaendig ? h('span', { text: 'Zuständig: ' + p.zustaendig }) : null);
-  const subm = h('div', { class: 'sub-m', text: [p.state ? p.state + (STATES[p.state] ? ' · ' + STATES[p.state] : '') : 'Ohne State'].join(' · ') });
-  return h('div', { class: 'row', 'data-id': p.id },
+  /* Jede Angabe hat ihren festen Platz. Fehlt sie, steht dort ein leiser Hinweis (am Handy ausgeblendet). */
+  const leer = t => h('span', { class: 'leer-t', text: t });
+  const zeigePerson = e => { if (!e.target.closest('input, select, label, button') && !String(getSelection())) personSheet(p.id); };
+  return h('div', { class: 'row', 'data-id': p.id, onclick: zeigePerson },
     istAdmin() ? h('label', { class: 'cb' }, h('input', { class: 'cbx', type: 'checkbox', checked: !!p.zaehlt, 'aria-label': 'Dazurechnen: ' + tv.t, title: 'Dazurechnen', onchange: e => quick(p.id, { zaehlt: e.target.checked }) })) : h('span', { class: 'cb' }),
-    h('div', { class: 'c-main' }, h('div', { class: 'nmline' }, S.f.projekt === 'alle' ? projektSymbol(projektVon(p.projekt_id), 'mini') : null, h('button', { class: 'nm', text: tv.t, onclick: () => personSheet(p.id) }), p.adressnummer ? h('span', { class: 'nr', title: 'Adressnummer', text: 'Nr. ' + p.adressnummer }) : null, p.dateien ? h('span', { class: 'nr', title: 'Dateien', text: p.dateien + (p.dateien === 1 ? ' Datei' : ' Dateien') }) : null, aehnTag(p)), sub, subm, h('div', { class: 'konten-m' }, ...kontenZeile(p))),
-    p.state ? h('div', { class: 'c-state', title: STATES[p.state] || p.state, text: p.state }) : h('div', { class: 'c-state leer', text: 'ohne' }),
-    h('div', { class: 'c-konten' }, ...kontenZeile(p, true)),
+    h('div', { class: 'c-main' },
+      h('div', { class: 'nmline' }, S.f.projekt === 'alle' ? projektSymbol(projektVon(p.projekt_id), 'mini') : null, h('button', { class: 'nm' + (name ? '' : ' ohne'), text: name || 'Ohne Name', 'aria-label': name || 'Ohne Name, ' + tv.t, onclick: () => personSheet(p.id) })),
+      h('div', { class: 'c-meta' }, p.adressnummer ? h('span', { class: 'nr', title: 'Adressnummer', text: 'Nr. ' + p.adressnummer }) : null, p.dateien ? h('span', { class: 'nr', title: 'Dateien', text: p.dateien + (p.dateien === 1 ? ' Datei' : ' Dateien') }) : null, aehnTag(p), p.zustaendig ? h('span', { class: 'zu', text: 'Zuständig: ' + p.zustaendig }) : null)),
+    h('div', { class: 'c-kontakt' }, p.email ? h('span', { class: 'em', title: p.email, text: p.email }) : leer('keine E-Mail'), p.nummer ? h('span', { class: 'ph', text: p.nummer }) : leer('keine Nummer'), mailTeilTag(p)),
+    h('div', { class: 'c-adr' + (p.state || p.adresse ? '' : ' nix') }, p.state ? h('span', { class: 'c-state', title: STATES[p.state] || p.state, text: p.state }) : null, p.adresse ? h('span', { class: 'ad', title: p.adresse, text: p.adresse }) : leer(p.state ? 'keine Adresse' : 'kein State, keine Adresse')),
+    h('div', { class: 'c-konten' }, p.mail_status ? h('span', { class: 'ms-pill ' + p.mail_status, text: p.mail_status === 'erhalten' ? 'Erhalten' : 'Erstellt' }) : p.email ? leer('Status offen') : null,
+      p.betonline || p.stake ? h('span', { class: 'logos' }, ...kontoMarken(p)) : leer('kein Konto')),
     h('div', { class: 'c-status' }, stsel),
     h('div', { class: 'c-last' }, rel(p.geaendert), h('br'), p.geaendert_von ? 'von ' + p.geaendert_von : ''));
 }
@@ -516,6 +516,8 @@ function popMenu(anchor, items) {
   popClose = () => { document.removeEventListener('pointerdown', onDoc, true); document.removeEventListener('keydown', onKey); pop.remove(); };
   const first = pop.querySelector('.mi'); if (first) first.focus();
 }
+/* Nach dem Speichern die Ansicht neu zeichnen, die gerade offen ist */
+function neuZeichnen() { if (S.ansicht === 'start') startAufbau(); else zeichne(); }
 function sheetEl(title, body, opt) {
   opt = opt || {};
   return h('div', { class: 'sheet' + (opt.wide ? ' wide' : ''), role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
@@ -566,7 +568,7 @@ function filterSheet() {
 function frow(label, control, extra, tall) {
   return h('label', { class: 'fr' + (tall ? ' tall' : '') }, h('span', { class: 'fl', text: label }), control, extra || null);
 }
-function personSheet(id) {
+function personSheet(id, dateien) {
   const neu = id == null;
   const p = neu ? { name: '', adressnummer: '', state: null, nummer: '', email: '', adresse: '', status: 'zu_erledigen', zaehlt: false, wert: null, projekt_id: S.f.projekt !== 'alle' ? S.f.projekt : 'usa', mail_status: null, betonline: false, stake: false, zustaendig: '', notiz: '' } : S.personen.find(x => x.id === id);
   if (!p) return;
@@ -598,9 +600,9 @@ function personSheet(id) {
     betBtn.setAttribute('aria-pressed', String(bet)); stakeBtn.setAttribute('aria-pressed', String(stk));
     const erh = mailWahl === 'erhalten';
     stakeBtn.disabled = erh && !stk && !origStake && (bet || origBet);
-    kHint.textContent = '';
-    kHint.append(erh ? h('p', { class: 'hint', text: stakeBtn.disabled ? 'Erhaltene Mail mit Bet Online: Stake geht hier nicht mehr.' : 'Erhaltene Mail: Hier ist nur Bet Online vorgesehen. Bei Stake fragt die Seite nach. Ist Bet Online gesetzt, geht Stake nicht mehr.' })
-      : mailWahl === 'erstellt' ? h('p', { class: 'hint', text: 'Selbst erstellte Mail: Stake und Bet Online gehen in jeder Reihenfolge.' }) : null);
+    const text = erh ? (stakeBtn.disabled ? 'Erhaltene Mail mit Bet Online: Stake geht hier nicht mehr.' : 'Erhaltene Mail: Hier ist nur Bet Online vorgesehen. Bei Stake fragt die Seite nach. Ist Bet Online gesetzt, geht Stake nicht mehr.')
+      : mailWahl === 'erstellt' ? 'Selbst erstellte Mail: Stake und Bet Online gehen in jeder Reihenfolge.' : '';
+    kHint.textContent = ''; if (text) kHint.append(h('p', { class: 'hint', text }));
   };
   const stakeFrage = () => {
     kWarn.textContent = ''; kWarn.hidden = false;
@@ -613,14 +615,21 @@ function personSheet(id) {
   };
   betBtn.addEventListener('click', () => { bet = !bet; kontenZeigen(); });
   stakeBtn.addEventListener('click', () => { if (stakeBtn.disabled) return; if (!stk && mailWahl === 'erhalten' && !stakeOk) { stakeFrage(); return; } stk = !stk; kontenZeigen(); });
-  erBtn.addEventListener('click', () => { mailWahl = 'erhalten'; mailZeigen(); kontenZeigen(); });
-  esBtn.addEventListener('click', () => { mailWahl = 'erstellt'; mailZeigen(); kontenZeigen(); });
+  let autoStatus = false;
+  erBtn.addEventListener('click', () => { mailWahl = 'erhalten'; autoStatus = false; mailZeigen(); kontenZeigen(); });
+  esBtn.addEventListener('click', () => { mailWahl = 'erstellt'; autoStatus = false; mailZeigen(); kontenZeigen(); });
   email.addEventListener('input', () => { if (!email.value.trim()) mailWahl = ''; mailZeigen(); kontenZeigen(); });
   mailZeigen(); kontenZeigen();
   const mailInfo = h('div', { class: 'mailinfo', hidden: true });
   /* Liste der noch offenen (selbst erstellten) Mails: Doppelklick auf das Mail-Feld oder der Knopf */
   const offenBtn = h('button', { class: 'cp om-btn', type: 'button', text: 'Offene Mails', title: 'Selbst erstellte Mails, bei denen Bet Online oder Stake noch frei ist' });
-  offenBtn.addEventListener('click', () => offeneMailsSheet(m => { email.value = m; email.dispatchEvent(new Event('input')); mailWahl = 'erstellt'; mailZeigen(); kontenZeigen(); mailInfoZeigen(); live(); }, id));
+  /* Eine ausgewaehlte, selbst erstellte Mail bringt ihren Status mit */
+  const waehleMail = m => {
+    email.value = m; email.dispatchEvent(new Event('input'));
+    const g = mailGruppe(m, id);
+    if (mailWahl !== 'erstellt' && g.length && g.every(o => o.mail_status === 'erstellt')) { mailWahl = 'erstellt'; autoStatus = false; mailZeigen(); kontenZeigen(); mailInfoZeigen(); live(); }
+  };
+  offenBtn.addEventListener('click', () => offeneMailsSheet(waehleMail, id));
   email.addEventListener('dblclick', () => offenBtn.click());
   const wert = h('input', { id: 'd-wert', value: p.wert == null ? '' : String(p.wert).replace('.', ','), inputmode: 'decimal', autocomplete: 'off', maxlength: 10, placeholder: 'Standard ' + eur(S.einst.standardwert) });
   const adresse = h('textarea', { id: 'd-adresse', maxlength: 500, placeholder: 'Zugeteilte Adresse', rows: 2 }); adresse.value = p.adresse || '';
@@ -648,7 +657,7 @@ function personSheet(id) {
       if (ma === 'exakt') gruende.push(grpProblem ? 'Gleiche E-Mail' : 'Mail wird geteilt'); else if (ma) gruende.push('E-Mail sehr ähnlich');
       if (ph.length >= 7 && x.nummer && x.nummer.replace(/\D/g, '') === ph) gruende.push('Gleiche Nummer');
       if (an && x.adressnummer && x.adressnummer.trim().toLowerCase() === an) gruende.push('Gleiche Adressnummer');
-      if (gruende.length) out.push({ p: x, gruende, exakt: a === 'exakt', nurTeilen: gruende.length === 1 && gruende[0] === 'Mail wird geteilt', hart: gruende.includes('Name gleich') || gruende.includes('Gleiche E-Mail') });
+      if (gruende.length) out.push({ p: x, gruende, exakt: a === 'exakt', nurTeilen: gruende.length === 1 && gruende[0] === 'Mail wird geteilt', nurMail: gruende.every(g => g === 'Mail wird geteilt' || g === 'Gleiche E-Mail'), hart: gruende.includes('Name gleich') || gruende.includes('Gleiche E-Mail') });
     }
     out.sort((a, b) => (b.hart - a.hart) || (b.exakt - a.exakt) || (b.gruende.length - a.gruende.length));
     return out.slice(0, 3);
@@ -675,26 +684,71 @@ function personSheet(id) {
     if (hart) setLabel('Sichern', false);
   }
   function pruefeLive() {
-    const list = treffer();
+    /* Gleiche Mails zeigt der Kasten direkt unter der Mail, hier stehen nur Namen, Nummern und aehnliche Eintraege. */
+    const list = treffer().filter(t => !t.nurMail);
     if (bestaetigt) { bestaetigt = false; setLabel('Sichern', false); warnBox.hidden = true; }
-    if (list.length) { soft.hidden = false; const hart = list.some(t => t.hart), teilen = list.every(t => t.nurTeilen); soft.className = 'softwarn' + (hart ? ' hart' : ''); soft.textContent = (hart ? 'Schon vorhanden (Sichern geht nicht): ' : teilen ? 'Diese Mail gibt es auch bei: ' : 'Ähnlich in der Liste: ') + list.map(t => titel(t.p) + ' (' + projektTitel(t.p.projekt_id) + ')').join(', ') + (teilen && !hart ? '. Frei für dich: ' + (mailFrei(mailGruppe(email.value, id)).join(' und ') || 'nichts') + '.' : ''); }
+    if (list.length) { soft.hidden = false; const hart = list.some(t => t.hart); soft.className = 'softwarn' + (hart ? ' hart' : ''); soft.textContent = (hart ? 'Schon vorhanden (Sichern geht nicht): ' : 'Ähnlich in der Liste: ') + list.map(t => titel(t.p) + ' (' + projektTitel(t.p.projekt_id) + ')').join(', '); }
     else soft.hidden = true;
   }
   let tmr = null; const live = () => { clearTimeout(tmr); tmr = setTimeout(pruefeLive, 250); };
   [name, email, nummer, anr].forEach(el => el.addEventListener('input', live));
-  /* Wo gibt es diese Mail noch? Hinweis unter der Mail, mit Sprung zum anderen Eintrag. */
+  /* Wo gibt es diese Mail noch? Hinweis unter der Mail, mit Sprung zum anderen Eintrag.
+     Fehlt dort der Mail-Status (Altbestand), kann man ihn hier mit einem Tipp nachtragen. */
+  const statusKlaeren = o => {
+    const knopf = (text, felder) => h('button', { class: 'btn sm', type: 'button', text, onclick: async ev => {
+      ev.target.disabled = true;
+      try {
+        einsetzen(await enqueue(o.id, () => rpc('tr_person_speichern', { p_code: S.code, p_id: o.id, p_felder: felder })));
+        neuZeichnen(); mailInfoZeigen(); live(); toast('Gespeichert bei ' + titel(o));
+      } catch (e) { toast(fehlertext(e), true); ev.target.disabled = false; }
+    } });
+    const ohneKonto = !o.betonline && !o.stake;
+    return h('div', { class: 'mi-klar' }, h('p', { text: 'Bei „' + titel(o) + '“ fehlt noch der Mail-Status. Was stimmt?' }),
+      h('div', { class: 'mi-knoepfe' }, ohneKonto ? [knopf('Erstellt, dort Bet Online', { mail_status: 'erstellt', betonline: true }), knopf('Erstellt, dort Stake', { mail_status: 'erstellt', stake: true }), knopf('Erstellt, dort noch kein Konto', { mail_status: 'erstellt' })] : knopf('Selbst erstellt', { mail_status: 'erstellt' }), knopf('Erhalten', { mail_status: 'erhalten' })));
+  };
   const mailInfoZeigen = () => {
     const grp = email.value.trim() ? mailGruppe(email.value, id) : [];
+    /* Steht die Mail schon als selbst erstellt in der Liste, ist sie auch hier "erstellt". */
+    if (neu || email.value.trim() !== (p.email || '')) {
+      const klar = grp.length === 1 && grp[0].mail_status === 'erstellt';
+      if (klar && !mailWahl) { mailWahl = 'erstellt'; autoStatus = true; mailZeigen(); kontenZeigen(); }
+      else if (!klar && autoStatus) { mailWahl = ''; autoStatus = false; mailZeigen(); kontenZeigen(); }
+    }
     mailInfo.textContent = ''; mailInfo.hidden = !grp.length; if (!grp.length) return;
-    const problem = mailProblem(grp, mailWahl, bet, stk);
-    mailInfo.className = 'mailinfo' + (problem ? ' bad' : '');
+    const problem = mailProblem(grp, mailWahl, bet, stk), offen = grp.filter(o => !o.mail_status);
+    mailInfo.className = 'mailinfo' + (problem && !offen.length ? ' bad' : '');
     mailInfo.append(h('div', { class: 'mi-k', text: 'Diese Mail gibt es auch bei:' }),
-      ...grp.map(o => h('button', { class: 'mi-row', type: 'button', onclick: () => { sh.__close(); personSheet(o.id); } }, projektSymbol(projektVon(o.projekt_id), 'mini'), h('span', { text: titel(o) + ' (' + projektTitel(o.projekt_id) + ')' }), h('span', { class: 'om-k' }, ...kontoMarken(o)), h('span', { class: 'mi-s', text: o.mail_status === 'erhalten' ? 'erhalten' : o.mail_status === 'erstellt' ? 'erstellt' : '' }))),
-      h('p', { class: 'hint', text: problem || ('Frei für dich: ' + (mailFrei(grp).join(' und ') || 'nichts') + '.') }));
+      ...grp.map(o => h('button', { class: 'mi-row', type: 'button', onclick: () => { sh.__close(); personSheet(o.id); } }, projektSymbol(projektVon(o.projekt_id), 'mini'), h('span', { text: titel(o) + ' (' + projektTitel(o.projekt_id) + ')' }), h('span', { class: 'om-k' }, ...kontoMarken(o)), h('span', { class: 'mi-s', text: o.mail_status === 'erhalten' ? 'erhalten' : o.mail_status === 'erstellt' ? 'erstellt' : 'Status offen' }))),
+      ...(offen.length && !grp.some(o => o.mail_status === 'erhalten') ? offen.map(statusKlaeren) : [h('p', { class: 'hint', text: problem || ('Frei für dich: ' + (mailFrei(grp).join(' und ') || 'nichts') + '.') })]));
   };
   email.addEventListener('input', mailInfoZeigen);
   [erBtn, esBtn, betBtn, stakeBtn].forEach(b => b.addEventListener('click', () => { mailInfoZeigen(); live(); }));
   mailInfoZeigen();
+
+  /* Vorschlaege beim Tippen: Mails, die noch fuer Bet Online oder Stake frei sind */
+  const vorschlag = h('div', { class: 'sugg', role: 'listbox', 'aria-label': 'Noch offene Mails', hidden: true });
+  let vListe = [], vAktiv = -1;
+  const vZu = () => { vorschlag.hidden = true; vorschlag.textContent = ''; vListe = []; vAktiv = -1; };
+  const vNimm = m => { waehleMail(m); vZu(); };
+  const vZeigen = () => {
+    const q = email.value.trim(), alle = neu || q !== (p.email || '') ? mailVorschlaege(q, id) : [];
+    vZu(); if (!alle.length) return;
+    vListe = alle.slice(0, 6); vorschlag.hidden = false;
+    vorschlag.append(h('div', { class: 'sg-k', text: 'Noch offen' }), ...vListe.map(m => mailEintrag(m, 'sg', () => vNimm(m.mail))),
+      ...(alle.length > 6 ? [h('div', { class: 'sg-k', text: (alle.length - 6) + ' weitere. Tippe weiter oder öffne „Offene Mails“.' })] : []));
+    vorschlag.querySelectorAll('.sg').forEach(b => { b.setAttribute('role', 'option'); b.tabIndex = -1; b.addEventListener('pointerdown', e => e.preventDefault()); });
+  };
+  email.addEventListener('input', vZeigen);
+  email.addEventListener('focus', vZeigen);
+  email.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== email) vZu(); }, 200));
+  email.addEventListener('keydown', e => {
+    if (vorschlag.hidden) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); vAktiv = (vAktiv + (e.key === 'ArrowDown' ? 1 : vAktiv < 0 ? 0 : -1) + vListe.length) % vListe.length;
+      vorschlag.querySelectorAll('.sg').forEach((b, i) => { b.classList.toggle('on', i === vAktiv); b.setAttribute('aria-selected', String(i === vAktiv)); });
+    } else if (e.key === 'Enter' && vAktiv >= 0) { e.preventDefault(); vNimm(vListe[vAktiv].mail); }
+    else if (e.key === 'Escape') { e.stopPropagation(); vZu(); }
+  });
 
   const sichern = h('button', { class: 'tbtn strong', type: 'button', text: 'Sichern' });
   const fuss = h('button', { class: 'btn pri big', type: 'button', text: 'Sichern', onclick: () => sichern.click() });
@@ -702,7 +756,7 @@ function personSheet(id) {
   sichern.addEventListener('click', async () => {
     err.textContent = '';
     const nm = name.value.trim();
-    if (![nm, anr.value, st.value, nummer.value, email.value, adresse.value, zust.value, notiz.value].some(v => v && v.trim())) { err.textContent = 'Bitte mindestens ein Feld ausfüllen.'; name.focus(); return; }
+    if (![nm, anr.value, st.value, nummer.value, email.value, adresse.value, zust.value, notiz.value].some(v => v && v.trim())) { err.textContent = neu && bereich.wartend() ? 'Zu den Dateien braucht es mindestens ein Feld, zum Beispiel den Namen oder die E-Mail.' : 'Bitte mindestens ein Feld ausfüllen.'; name.focus(); return; }
     if (email.value.trim() && !mailWahl && (neu || email.value.trim() !== (p.email || ''))) { err.textContent = 'Bitte den Mail-Status wählen: Erhalten oder Erstellt.'; erBtn.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
     if (mailWahl === 'erhalten' && stk && !origStake && origBet) { err.textContent = FEHLER.stake_gesperrt; return; }
     const wz = wert.value.trim() === '' ? null : parseEuro(wert.value);
@@ -726,7 +780,7 @@ function personSheet(id) {
     sichern.disabled = true; fuss.disabled = true;
     try {
       const r = await enqueue(id || 'neu', () => rpc('tr_person_speichern', { p_code: S.code, p_id: id, p_felder: felder }));
-      einsetzen(r); sh.__close(); zeichne(); toast(neu ? 'Person angelegt' : 'Gespeichert');
+      einsetzen(r); sh.__close(); neuZeichnen(); toast(neu ? 'Person angelegt' : 'Gespeichert');
       if (neu && bereich.wartend()) {
         const u = await bereich.hochladen(r.id); await laden(false);
         toast(u.fehler ? u.ok + ' Dateien gespeichert, ' + u.fehler + ' nicht: ' + u.grund : u.ok + (u.ok === 1 ? ' Datei hochgeladen' : ' Dateien hochgeladen'), !!u.fehler);
@@ -742,33 +796,23 @@ function personSheet(id) {
     catch (e) { err.textContent = fehlertext(e); ev.target.disabled = false; }
   } })) : null;
 
+  const abschnitt = (titelText, rechts, ...kinder) => h('section', { class: 'abschnitt' }, h('div', { class: 'ab-kopf' }, h('h3', { class: 'fg-t', text: titelText }), rechts), ...kinder);
   const body = h('div', { class: 'sheet-b' },
     warnBox,
-    h('div', { class: 'fg' }, frow('Projekt', projSel), frow('Name', name), soft, frow('Adressnr.', anr), frow('State', st)),
-    h('div', { class: 'fg' }, frow('Stufe', status), istAdmin() ? [frow('Wert (€)', wert), h('label', { class: 'fr sw-row' }, h('span', { class: 'fl', text: 'Dazurechnen' }), haken)] : null),
-    h('div', { class: 'fg' }, frow('Nummer', nummer, cp(() => nummer.value)), frow('E-Mail', email, cp(() => email.value)), h('div', { class: 'fr ms' }, h('span', { class: 'fl', text: 'Mail-Status' }), h('div', { class: 'mbtns' }, erBtn, esBtn, offenBtn)), frow('Adresse', adresse, cp(() => adresse.value), true)),
-    mailInfo,
-    h('div', null, h('div', { class: 'fg' }, h('div', { class: 'fr konto' }, h('span', { class: 'fl', text: 'Konten' }), h('div', { class: 'kbtns' }, betBtn, stakeBtn))), kWarn, kHint),
-    h('div', { class: 'fg' }, frow('Zuständig', zust), frow('Notiz', notiz, null, true)),
-    h('div', null, h('div', { class: 'fg-t', text: 'Dateien und Fotos' }), bereich.el),
+    abschnitt('Person', null, h('div', { class: 'fg' }, frow('Projekt', projSel), frow('Name', name), soft, frow('State', st), frow('Adresse', adresse, cp(() => adresse.value), true), frow('Adressnr.', anr))),
+    abschnitt('E-Mail und Nummer', offenBtn, h('div', { class: 'fg' }, frow('E-Mail', email, cp(() => email.value)), vorschlag, h('div', { class: 'fr ms' }, h('span', { class: 'fl', text: 'Mail-Status' }), h('div', { class: 'mbtns' }, erBtn, esBtn)), frow('Nummer', nummer, cp(() => nummer.value))), mailInfo),
+    abschnitt('Konten', null, h('div', { class: 'fg' }, h('div', { class: 'fr konto' }, h('span', { class: 'fl', text: 'Konten' }), h('div', { class: 'kbtns' }, betBtn, stakeBtn))), kWarn, kHint),
+    abschnitt('Stand und Notiz', null, h('div', { class: 'fg' }, frow('Stufe', status), istAdmin() ? [frow('Wert (€)', wert), h('label', { class: 'fr sw-row' }, h('span', { class: 'fl', text: 'Dazurechnen' }), haken)] : null, frow('Zuständig', zust), frow('Notiz', notiz, null, true))),
+    abschnitt('Dateien und Fotos', null, bereich.el),
     !neu && p.geaendert_von ? h('p', { class: 'meta', text: 'Zuletzt geändert von ' + p.geaendert_von + ', ' + rel(p.geaendert) + '. Angelegt von ' + (p.erstellt_von || 'unbekannt') + '.' }) : null,
     err, del);
   const sh = sheetEl(neu ? 'Neue Person' : 'Person', body, { left: h('button', { class: 'tbtn', type: 'button', text: 'Abbrechen', onclick: () => sh.__close() }), right: sichern, foot: fuss });
   oeffne(sh, false);
-  /* Dateien und Fotos: ueberall im Fenster hineinziehen oder mit Strg+V einfuegen (auch Screenshots), ohne sie vorher zu speichern */
-  const istDatei = e => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
-  sh.addEventListener('dragover', e => { if (istDatei(e)) { e.preventDefault(); sh.classList.add('drop-an'); } });
-  sh.addEventListener('dragleave', e => { if (!sh.contains(e.relatedTarget)) sh.classList.remove('drop-an'); });
-  sh.addEventListener('drop', e => { if (istDatei(e)) { e.preventDefault(); sh.classList.remove('drop-an'); bereich.neue([...e.dataTransfer.files]); } });
-  const einfuegen = e => {
-    if (!sh.isConnected) { document.removeEventListener('paste', einfuegen); return; }
-    const cd = e.clipboardData; if (!cd || !cd.files || !cd.files.length) return;
-    const t = cd.getData ? cd.getData('text/plain') : '';
-    if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && t && t.trim()) return;
-    e.preventDefault(); bereich.neue([...cd.files]);
-  };
-  document.addEventListener('paste', einfuegen);
-  (neu ? name : status).focus();
+  /* Dateien und Fotos nimmt die offene Person entgegen: hineinziehen oder mit Strg+V (siehe "Dateien annehmen") */
+  sh.__dateien = f => bereich.neue(f);
+  sh.__wer = () => name.value.trim() || (neu ? 'der neuen Person' : titel(p));
+  if (neu) name.focus(); else { sh.tabIndex = -1; sh.focus({ preventScroll: true }); }
+  if (Array.isArray(dateien)) bereich.neue(dateien);
 }
 
 /* ---------- Flaggen (als Zeichnung, weil Windows keine Flaggen-Emojis zeigt). Alle im Format 30 x 20. */
@@ -867,9 +911,11 @@ function mailAehnlich(a, b) {
 function mailGruppe(mail, ausserId) { const k = mailKey(mail); return k ? S.personen.filter(o => o.id !== ausserId && o.email && mailKey(o.email) === k) : []; }
 function mailProblem(grp, status, bet, stk) {
   if (!grp.length) return null;
-  if (status !== 'erstellt' || grp.some(o => o.mail_status !== 'erstellt')) return 'Diese Mail gibt es schon bei einem anderen Eintrag. Eine erhaltene Mail geht nur einmal. Nur selbst erstellte Mails können zweimal vorkommen, einmal für Bet Online und einmal für Stake.';
+  if (grp.some(o => o.mail_status === 'erhalten')) return 'Diese Mail ist verbraucht: Sie wurde erhalten und steht schon bei einem anderen Eintrag. Eine erhaltene Mail geht nur einmal.';
+  if (grp.some(o => o.mail_status !== 'erstellt')) return 'Beim anderen Eintrag fehlt noch, ob die Mail erstellt oder erhalten ist. Wähle das im Kasten unter der Mail.';
   const bo = grp.some(o => o.betonline), st = grp.some(o => o.stake);
   if (grp.length >= 2 || (bo && st)) return 'Diese Mail ist schon voll: Sie steht bei zwei Einträgen oder beide Konten (Bet Online und Stake) sind vergeben.';
+  if (status !== 'erstellt') return 'Diese Mail steht als selbst erstellt in der Liste. Wähle beim Mail-Status „Erstellt“.';
   if ((bet && bo) || (stk && st)) return (bet && bo ? 'Bet Online' : 'Stake') + ' ist mit dieser Mail schon bei einem anderen Eintrag angelegt. Wähle das andere Konto.';
   return null;
 }
@@ -888,10 +934,23 @@ function kontoMarken(p) { return [p.betonline ? h('span', { class: 'kbadge', tit
 function offeneMails(ausserId) {
   const out = [];
   mailKarte().forEach(g => {
-    if (g.some(o => o.id === ausserId) || g.length >= 2 || g.some(o => o.mail_status !== 'erstellt')) return;
-    const frei = mailFrei(g); if (frei.length) out.push({ mail: g[0].email, eintraege: g, frei });
+    if (g.some(o => o.id === ausserId) || g.length >= 2 || g.some(o => o.mail_status === 'erhalten')) return;
+    const frei = mailFrei(g); if (frei.length) out.push({ mail: g[0].email, eintraege: g, frei, offen: g.some(o => !o.mail_status) });
   });
-  return out.sort((a, b) => a.mail.localeCompare(b.mail));
+  return out.sort((a, b) => (a.offen - b.offen) || a.mail.localeCompare(b.mail));
+}
+/* Ab dem ersten Buchstaben: erst Treffer am Anfang, ab drei Zeichen auch mitten in der Mail. Selbst erstellte zuerst. */
+function mailVorschlaege(text, ausserId) {
+  const q = text.trim().toLowerCase(); if (!q) return [];
+  const alle = offeneMails(ausserId), k = mailKey(q);
+  if (alle.some(m => mailKey(m.mail) === k)) return [];
+  const am = m => m.mail.toLowerCase().startsWith(q);
+  return alle.filter(m => q.length < 3 ? am(m) : m.mail.toLowerCase().includes(q)).sort((a, b) => (a.offen - b.offen) || (am(b) - am(a)) || a.mail.localeCompare(b.mail));
+}
+function mailEintrag(m, klasse, klick) {
+  return h('button', { class: klasse, type: 'button', onclick: klick },
+    h('span', { class: 'om-t' }, h('strong', { text: m.mail }), h('small', { text: 'bei ' + m.eintraege.map(o => titel(o) + ' (' + projektTitel(o.projekt_id) + ')').join(', ') })),
+    h('span', { class: 'om-k' }, ...m.eintraege.flatMap(kontoMarken)), m.offen ? h('span', { class: 'tag', text: 'Status offen' }) : h('span', { class: 'tag blue', text: 'frei: ' + m.frei.join(', ') }));
 }
 function offeneMailsSheet(waehle, ausserId) {
   const liste = h('div', { class: 'fg om' }), suche = h('input', { type: 'search', placeholder: 'Mail oder Name suchen', 'aria-label': 'Offene Mails durchsuchen', autocomplete: 'off' });
@@ -900,12 +959,13 @@ function offeneMailsSheet(waehle, ausserId) {
     const q = suche.value.trim().toLowerCase(); liste.textContent = '';
     const tr = alle.filter(m => !q || m.mail.toLowerCase().includes(q) || m.eintraege.some(o => titel(o).toLowerCase().includes(q)));
     if (!tr.length) { liste.append(h('p', { class: 'hint', text: alle.length ? 'Keine Mail passt zur Suche.' : 'Keine offene Mail. Offen ist eine selbst erstellte Mail, bei der Bet Online oder Stake noch nicht angelegt ist.' })); return; }
-    tr.forEach(m => liste.append(h('button', { class: 'om-row', type: 'button', onclick: () => { sh.__close(); waehle(m.mail); } },
-      h('span', { class: 'om-t' }, h('strong', { text: m.mail }), h('small', { text: 'bei ' + m.eintraege.map(o => titel(o) + ' (' + projektTitel(o.projekt_id) + ')').join(', ') })),
-      h('span', { class: 'om-k' }, ...m.eintraege.flatMap(kontoMarken)), h('span', { class: 'tag blue', text: 'frei: ' + m.frei.join(', ') }))));
+    tr.forEach((m, i) => {
+      if (m.offen && (i === 0 || !tr[i - 1].offen)) liste.append(h('div', { class: 'om-kopf', text: 'Mail-Status noch nicht festgelegt (ältere Einträge)' }));
+      liste.append(mailEintrag(m, 'om-row', () => { sh.__close(); waehle(m.mail); }));
+    });
   };
   suche.addEventListener('input', zeig);
-  const sh = sheetEl('Offene Mails', h('div', { class: 'sheet-b' }, h('p', { class: 'hint', text: 'Selbst erstellte Mails, die noch für Bet Online oder Stake frei sind. Tippe eine an, sie wird eingetragen.' }), h('div', { class: 'fg' }, h('label', { class: 'fr one' }, suche)), liste), { left: h('button', { class: 'tbtn', type: 'button', text: 'Schließen', onclick: () => sh.__close() }) });
+  const sh = sheetEl('Offene Mails', h('div', { class: 'sheet-b' }, h('p', { class: 'hint', text: 'Mails, die noch für Bet Online oder Stake frei sind. Tippe eine an, sie wird eingetragen.' }), h('div', { class: 'fg' }, h('label', { class: 'fr one' }, suche)), liste), { left: h('button', { class: 'tbtn', type: 'button', text: 'Schließen', onclick: () => sh.__close() }) });
   zeig(); oeffne(sh, true); suche.focus();
 }
 
@@ -1147,8 +1207,22 @@ function dateiBereich(personId) {
   const grid = h('div', { class: 'files' }), msg = h('p', { class: 'err' });
   const input = h('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Dateien auswählen' });
   const zone = h('div', { class: 'dz', role: 'button', tabindex: '0', 'aria-label': 'Dateien hinzufügen' },
-    h('strong', { text: 'Dateien oder Fotos hinzufügen' }), h('span', { text: 'Hier tippen, Dateien hineinziehen oder mit Strg+V einfügen. Bilder, PDF, Word, Excel, PowerPoint, ZIP, TXT, CSV. Bis 5 MB je Datei, Fotos werden verkleinert.' }));
-  const el = h('div', { class: 'fg dz-box' }, zone, input, grid, msg);
+    h('strong', { text: 'Dateien oder Fotos hinzufügen' }), h('span', { text: 'Hier tippen und auswählen. Oder irgendwo auf die Seite ziehen oder mit Strg+V einfügen. Bilder, PDF, Word, Excel, PowerPoint, ZIP, TXT, CSV. Bis 5 MB je Datei, Fotos werden verkleinert.' }));
+  const ablage = navigator.clipboard && navigator.clipboard.read ? h('button', { class: 'btn einf', type: 'button', text: 'Aus Zwischenablage einfügen', onclick: () => ausAblage() }) : null;
+  const el = h('div', { class: 'fg dz-box' }, zone, ablage, input, grid, msg);
+  /* Knopf fuer Maus und Handy: holt ein kopiertes Bild oder einen Screenshot aus der Zwischenablage */
+  async function ausAblage() {
+    msg.textContent = '';
+    try {
+      const files = [];
+      for (const it of await navigator.clipboard.read()) {
+        const t = it.types.find(x => x.startsWith('image/'));
+        if (t) files.push(new File([await it.getType(t)], dateiName(t), { type: t }));
+        else if (it.types.includes('text/html')) { const b = bildAusHtml(await (await it.getType('text/html')).text()); if (b) files.push(b); }
+      }
+      if (files.length) neue(files); else msg.textContent = 'In der Zwischenablage ist kein Bild. Dateien aus dem Explorer ziehst du herein oder fügst sie mit Strg+V ein.';
+    } catch (e) { msg.textContent = 'Der Browser hat das Einfügen nicht erlaubt. Erlaube den Zugriff auf die Zwischenablage oder nimm Strg+V.'; }
+  }
 
   function zeige() {
     grid.textContent = '';
@@ -1173,28 +1247,30 @@ function dateiBereich(personId) {
   }
   async function oeffnen(d) { msg.textContent = ''; try { await dateiHolen(d); } catch (e) { msg.textContent = fehlertext(e); } }
   async function neue(files) {
-    msg.textContent = '';
+    msg.textContent = ''; if (!files.length) return;
+    let ok = 0, vorgemerkt = 0;
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     for (let f of files) {
-      if (!f.name) f = new File([f], 'Einfuegung.' + (((f.type || 'image/png').split('/')[1]) || 'png'), { type: f.type });
+      if (!f.name) f = new File([f], dateiName(f.type || 'image/png'), { type: f.type });
       if (liste.length + wartend.length + laeuft >= DATEI_ANZ) { msg.textContent = FEHLER.zu_viele_dateien; break; }
       if (!endungOk(f.name)) { msg.textContent = '"' + f.name + '": ' + FEHLER.datei_typ_nicht_erlaubt; continue; }
       if (f.size > DATEI_MAX && !f.type.startsWith('image/')) { msg.textContent = '"' + f.name + '": ' + FEHLER.datei_zu_gross; continue; }
-      if (!personId) { wartend.push(f); zeige(); continue; }
+      if (!personId) { wartend.push(f); vorgemerkt++; zeige(); continue; }
       laeuft++; zeige();
-      try { liste.push(await dateiHochladen(personId, f)); } catch (e) { msg.textContent = '"' + f.name + '": ' + fehlertext(e); }
+      try { const d = await dateiHochladen(personId, f); liste = [...liste.filter(x => x.id !== d.id), d]; ok++; } catch (e) { msg.textContent = '"' + f.name + '": ' + fehlertext(e); }
       laeuft--; zeige();
     }
+    if (msg.textContent) toast(msg.textContent, true);
+    else if (ok) toast(ok === 1 ? 'Datei gespeichert' : ok + ' Dateien gespeichert');
+    else if (vorgemerkt) toast((vorgemerkt === 1 ? 'Datei vorgemerkt, sie wird' : vorgemerkt + ' Dateien vorgemerkt, sie werden') + ' beim Sichern hochgeladen');
     if (personId) laden(false);
   }
   zone.addEventListener('click', () => input.click());
   zone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
   input.addEventListener('change', () => { const f = [...input.files]; input.value = ''; neue(f); });
-  ['dragenter', 'dragover'].forEach(t => zone.addEventListener(t, e => { e.preventDefault(); zone.classList.add('over'); }));
-  zone.addEventListener('dragleave', () => zone.classList.remove('over'));
-  zone.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); zone.classList.remove('over'); neue([...(e.dataTransfer ? e.dataTransfer.files : [])]); });
   if (personId) {
     grid.append(h('p', { class: 'hint', text: 'Lädt ...' }));
-    rpc('tr_dateien', { p_code: S.code, p_person: personId }).then(r => { liste = r; zeige(); }).catch(e => { grid.textContent = ''; msg.textContent = fehlertext(e); });
+    rpc('tr_dateien', { p_code: S.code, p_person: personId }).then(r => { liste = [...r, ...liste.filter(x => !r.some(y => y.id === x.id))]; zeige(); }).catch(e => { grid.textContent = ''; msg.textContent = fehlertext(e); });
   }
   return {
     el, neue,
@@ -1206,8 +1282,78 @@ function dateiBereich(personId) {
     },
   };
 }
-/* Dateien, die auf die Seite fallen, sollen nie die Seite verlassen. */
-['dragover', 'drop'].forEach(t => window.addEventListener(t, e => { if (e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files')) e.preventDefault(); }));
+/* ---------- Dateien annehmen: ueberall auf die Seite ziehen oder mit Strg+V einfuegen.
+   Offene Person: die Datei geht zu ihr. In der Liste: auf eine Person ziehen, sonst entsteht eine neue Person.
+   Was auf die Seite faellt, oeffnet nie eine andere Seite. */
+function dateiName(typ) {
+  const d = new Date(), e = (String(typ || '').split('/')[1] || 'png').split('+')[0];
+  return 'Einfuegung_' + heute() + '_' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + '.' + (e === 'jpeg' ? 'jpg' : e);
+}
+/* Manche Programme liefern ein Bild nur eingebettet im HTML. Fremde Adressen werden nie geladen (Sicherheitsregel der Seite). */
+function bildAusHtml(html) {
+  const m = /<img[^>]+src=["']data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+\/=\s]+)["']/i.exec(html || '');
+  if (!m) return null;
+  try { const bin = atob(m[2].replace(/\s/g, '')); return new File([Uint8Array.from(bin, c => c.charCodeAt(0))], dateiName(m[1]), { type: m[1] }); } catch (e) { return null; }
+}
+const istFeld = el => !!el && /^(INPUT|TEXTAREA)$/.test(el.tagName);
+const blaetter = () => [...document.querySelectorAll('#layer > .veil > .sheet')];
+const offenesBlatt = () => blaetter().reverse().find(s => s.__dateien);
+let zugIntern = false, zugBild = null, zugUhr = null;
+function zugArt(e) {
+  const t = e.dataTransfer ? [...e.dataTransfer.types] : [];
+  if (zugIntern) return null;
+  if (t.includes('Files')) return 'datei';
+  return t.includes('text/uri-list') && !istFeld(e.target) ? 'link' : null;
+}
+function zugZiel(e) {
+  const offen = offenesBlatt();
+  if (offen) return { text: 'Hier loslassen: Datei für ' + offen.__wer(), tun: f => offen.__dateien(f) };
+  if (blaetter().length || !S.me || S.ansicht !== 'liste') return null;
+  const row = e.target.closest ? e.target.closest('.row') : null, p = row && S.personen.find(x => String(x.id) === row.dataset.id);
+  if (p) return { row, text: 'Hier loslassen: Datei für ' + titel(p), tun: f => personSheet(p.id, f) };
+  return { text: 'Auf eine Person ziehen. Hier loslassen legt eine neue Person an.', tun: f => personSheet(null, f) };
+}
+function zugEnde() {
+  clearTimeout(zugUhr); if (zugBild) { zugBild.remove(); zugBild = null; }
+  document.querySelectorAll('.row.ziel').forEach(r => r.classList.remove('ziel'));
+}
+function zugZeigen(z) {
+  if (!zugBild) { zugBild = h('div', { class: 'zug', 'aria-hidden': 'true' }, h('div', { class: 'zug-t' })); document.body.append(zugBild); }
+  zugBild.firstChild.textContent = z.text;
+  document.querySelectorAll('.row.ziel').forEach(r => { if (r !== z.row) r.classList.remove('ziel'); });
+  if (z.row) z.row.classList.add('ziel');
+  clearTimeout(zugUhr); zugUhr = setTimeout(zugEnde, 300);
+}
+document.addEventListener('dragstart', () => { zugIntern = true; });
+document.addEventListener('dragend', () => { zugIntern = false; zugEnde(); });
+document.addEventListener('dragover', e => {
+  if (!zugArt(e)) return;
+  e.preventDefault();
+  const z = zugZiel(e); if (!z) { zugEnde(); return; }
+  e.dataTransfer.dropEffect = /^(link|linkMove)$/.test(e.dataTransfer.effectAllowed) ? 'link' : 'copy';
+  zugZeigen(z);
+});
+document.addEventListener('drop', e => {
+  if (!zugArt(e)) return;
+  e.preventDefault();
+  const z = zugZiel(e); zugEnde(); if (!z) return;
+  let files = [...e.dataTransfer.files];
+  if (!files.length) { const b = bildAusHtml(e.dataTransfer.getData('text/html')); if (b) files = [b]; }
+  if (files.length) z.tun(files);
+  else toast('Das kam nur als Link an, nicht als Datei. Rechtsklick auf das Bild, „Bild kopieren“, dann hier Strg+V.', true);
+});
+document.addEventListener('paste', e => {
+  const cd = e.clipboardData; if (!cd) return;
+  let files = [...cd.files];
+  const text = (cd.getData('text/plain') || '').trim();
+  if (!files.length && !istFeld(e.target)) { const b = bildAusHtml(cd.getData('text/html')); if (b) files = [b]; }
+  if (!files.length) return;
+  if (istFeld(e.target) && text && !/^(https?|file|blob|data):\S*$/i.test(text) && !files.some(f => f.name === text)) return;
+  const offen = offenesBlatt();
+  if (!offen) { if (!blaetter().length && S.me) { e.preventDefault(); toast('Öffne zuerst die Person, dann mit Strg+V einfügen.', true); } return; }
+  e.preventDefault();
+  offen.__dateien(files.map(f => /^image\.\w+$/i.test(f.name) ? new File([f], dateiName(f.type), { type: f.type }) : f));
+});
 
 /* ---------- Einstellungen (Profil) und Uebersicht */
 function einstellungenBlock(err) {

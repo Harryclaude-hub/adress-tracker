@@ -62,5 +62,18 @@ begin
   r := public.tr_person_speichern(code, a, '{"notiz":"x"}'::jsonb);
   rep := rep || 'M9 normale Aenderung an erhaltener Mail ok; ';
 
+  -- Erst Stake, spaeter Bet Online bei einem anderen Eintrag
+  perform public.tr_person_speichern(code, null, '{"name":"Zz Spaeter Eins","email":"spaeter@example.invalid","mail_status":"erstellt","stake":true}'::jsonb);
+  perform public.tr_person_speichern(code, null, '{"name":"Zz Spaeter Zwei","email":"spaeter@example.invalid","mail_status":"erstellt","betonline":true}'::jsonb);
+  rep := rep || 'M10 erst Stake, spaeter Bet Online bei anderem Eintrag ok; ';
+
+  -- Alter Eintrag ohne Mail-Status: gesperrt, bis der Status dort nachgetragen ist
+  insert into tracker.person (name, email, projekt_id) values ('Zz Altbestand', 'alt@example.invalid', 'usa') returning id into f;
+  begin perform public.tr_person_speichern(code, null, '{"name":"Zz Alt Zwei","email":"alt@example.invalid","mail_status":"erstellt"}'::jsonb); rep := rep || 'M11a FEHLER; ';
+  exception when others then rep := rep || 'M11a ohne Status beim alten Eintrag noch gesperrt (' || sqlerrm || ') ok; '; end;
+  perform public.tr_person_speichern(code, f, '{"mail_status":"erstellt","betonline":true}'::jsonb);
+  perform public.tr_person_speichern(code, null, '{"name":"Zz Alt Zwei","email":"alt@example.invalid","mail_status":"erstellt","stake":true}'::jsonb);
+  rep := rep || 'M11b nach Nachtragen (erstellt, dort Bet Online) geht Stake beim neuen Eintrag ok; ';
+
   raise exception 'TEST-BERICHT: %', rep;
 end $test$;
